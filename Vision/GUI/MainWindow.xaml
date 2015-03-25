@@ -5,17 +5,17 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Vision.GUI"
         mc:Ignorable="d"
-        Title="MainWindow" Height="350" Width="525">
+        Title="Vision" Height="480" Width="640">
     <DockPanel>
         <Menu DockPanel.Dock="Top">
-            <MenuItem Header="_Вид">
-                <MenuItem Name="ColorMenuItem" IsCheckable="True" IsChecked="True" Header="_Цветной" />
-                <MenuItem Name="DepthMenuItem" IsCheckable="True" Header="_Глубина" />
-                <MenuItem Name="MapMenuItem" IsCheckable="True" Header="_Карта" />
+            <MenuItem Header="_View">
+                <MenuItem Name="ColorMenuItem" IsCheckable="True" IsChecked="True" Header="_Color" />
+                <MenuItem Name="DepthMenuItem" IsCheckable="True" Header="_Depth" />
+                <MenuItem Name="MapMenuItem" IsCheckable="True" Header="_Map" />
             </MenuItem>
         </Menu>
         <Grid>
-            <Image Name="StreamingImage"></Image>
+            <Image Name="StreamingImage" />
         </Grid>
     </DockPanel>
 </Window>

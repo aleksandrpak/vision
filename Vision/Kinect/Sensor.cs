@@ -8,6 +8,12 @@ namespace Vision.Kinect
     {
         #region Fields
 
+        public const ushort MaxDepth = 8000;
+
+        public const int DepthFrameWidth = 512;
+
+        public const int DepthFrameHeight = 424;
+
         private readonly KinectSensor _sensor;
 
         private MultiSourceFrameReader _reader;
@@ -16,9 +22,11 @@ namespace Vision.Kinect
 
         private EventHandler<Image> _depthImageUpdated;
 
+        private EventHandler<byte[]> _depthDataReceived;
+
         private int _colorImageSubscribers;
 
-        private int _depthImageSubscribers;
+        private int _depthSubscribers;
 
         #endregion
 
@@ -52,7 +60,7 @@ namespace Vision.Kinect
             if (_colorImageSubscribers > 0)
                 types |= FrameSourceTypes.Color;
 
-            if (_depthImageSubscribers > 0)
+            if (_depthSubscribers > 0)
                 types |= FrameSourceTypes.Depth;
 
             DestroyReader(types);
@@ -63,7 +71,7 @@ namespace Vision.Kinect
         {
             if (_reader == null ? types == FrameSourceTypes.None : _reader.FrameSourceTypes == types)
                 return;
-           
+
             _reader = _sensor.OpenMultiSourceFrameReader(types);
             _reader.MultiSourceFrameArrived += MultiSourceFrameArrivedEventHandler;
         }
@@ -83,40 +91,35 @@ namespace Vision.Kinect
             if (frame == null)
                 return;
 
-            var width = frame.FrameDescription.Width;
-            var height = frame.FrameDescription.Height;
-
-            var minDepth = frame.DepthMinReliableDistance;
-            var maxDepth = frame.DepthMaxReliableDistance;
-
-            var depthData = new ushort[width * height];
-            var pixelData = new byte[width * height * (32 + 7) / 8];
+            var depthData = new ushort[DepthFrameWidth * DepthFrameHeight];
+            var pixelData = new byte[DepthFrameWidth * DepthFrameHeight * 3];
 
             frame.CopyFrameDataToArray(depthData);
 
             var colorIndex = 0;
             for (var depthIndex = 0; depthIndex < depthData.Length; ++depthIndex)
             {
-                var depth = depthData[depthIndex];
-                var intensity = (byte)(depth >= minDepth && depth <= maxDepth ? depth : 0);
+                var depth = Math.Min(depthData[depthIndex], MaxDepth);
+                var percent = (double)depth / MaxDepth;
 
-                pixelData[colorIndex++] = intensity; // Blue
-                pixelData[colorIndex++] = intensity; // Green
-                pixelData[colorIndex++] = intensity; // Red
+                var blueIntensity = percent > 0.5 ? (percent - 0.5) * 2 : 0;
+                var greenIntensity = percent > 0.5 ? 1 - percent : percent * 2;
+                var redIntensity = Math.Max(0, 1 - percent * 2);
 
-                ++colorIndex;
+                pixelData[colorIndex++] = (byte)(depth == 0 ? 0 : 255 * blueIntensity); // Blue
+                pixelData[colorIndex++] = (byte)(depth == 0 ? 0 : 255 * greenIntensity); // Green
+                pixelData[colorIndex++] = (byte)(depth == 0 ? 0 : 255 * redIntensity); // Red
             }
-
-            var stride = width * 32 / 8;
-
+            
             RaiseDepthImageUpdated(new Image
                 {
-                    Width = width,
-                    Height = height,
+                    Width = DepthFrameWidth,
+                    Height = DepthFrameHeight,
                     DpiX = 96.0,
                     DpiY = 96.0,
                     Pixels = pixelData,
-                    Stride = stride
+                    Stride = DepthFrameWidth * 3,
+                    BitsPerPixel = 24
                 });
         }
 
@@ -128,14 +131,12 @@ namespace Vision.Kinect
             var width = frame.FrameDescription.Width;
             var height = frame.FrameDescription.Height;
 
-            var pixels = new Byte[width * height * ((32 + 7) / 8)];
+            var pixels = new byte[width * height * 4];
 
             if (frame.RawColorImageFormat == ColorImageFormat.Bgra)
                 frame.CopyRawFrameDataToArray(pixels);
             else
                 frame.CopyConvertedFrameDataToArray(pixels, ColorImageFormat.Bgra);
-
-            var stride = width * 32 / 8;
 
             RaiseColorImageUpdated(new Image
                 {
@@ -144,7 +145,8 @@ namespace Vision.Kinect
                     DpiX = 96.0,
                     DpiY = 96.0,
                     Pixels = pixels,
-                    Stride = stride
+                    Stride = width * 4,
+                    BitsPerPixel = 32
                 });
         }
 
@@ -152,7 +154,7 @@ namespace Vision.Kinect
 
         #region Events
 
-        private void AddEvent(ref EventHandler<Image> eventHandler, EventHandler<Image> value, ref int subscribers)
+        private void AddEvent<T>(ref EventHandler<T> eventHandler, EventHandler<T> value, ref int subscribers)
         {
             lock (_sensor) // We don't need high performance in this operation
             {
@@ -163,7 +165,7 @@ namespace Vision.Kinect
             }
         }
 
-        private void RemoveEvent(ref EventHandler<Image> eventHandler, EventHandler<Image> value, ref int subscribers)
+        private void RemoveEvent<T>(ref EventHandler<T> eventHandler, EventHandler<T> value, ref int subscribers)
         {
             lock (_sensor) // We don't need high performance in this operation
             {
@@ -191,6 +193,11 @@ namespace Vision.Kinect
             _depthImageUpdated?.Invoke(this, image);
         }
 
+        private void RaiseDepthDataReceived(byte[] data)
+        {
+            _depthDataReceived?.Invoke(this, data);
+        }
+
         public event EventHandler<Image> ColorImageUpdated
         {
             add
@@ -207,11 +214,23 @@ namespace Vision.Kinect
         {
             add
             {
-                AddEvent(ref _depthImageUpdated, value, ref _depthImageSubscribers);
+                AddEvent(ref _depthImageUpdated, value, ref _depthSubscribers);
             }
             remove
             {
-                RemoveEvent(ref _depthImageUpdated, value, ref _depthImageSubscribers);
+                RemoveEvent(ref _depthImageUpdated, value, ref _depthSubscribers);
+            }
+        }
+
+        public event EventHandler<byte[]> DepthDataReceived
+        {
+            add
+            {
+                AddEvent(ref _depthDataReceived, value, ref _depthSubscribers);
+            }
+            remove
+            {
+                RemoveEvent(ref _depthDataReceived, value, ref _depthSubscribers);
             }
         }
 

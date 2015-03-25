@@ -13,5 +13,7 @@
         public byte[] Pixels { get; set; }
 
         public int Stride { get; set; }
+
+        public byte BitsPerPixel { get; set; }
     }
 }

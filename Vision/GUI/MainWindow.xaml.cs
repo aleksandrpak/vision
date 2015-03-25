@@ -28,7 +28,23 @@ namespace Vision.GUI
 
         private void ImageUpdatedEventHandler(object sender, Image image)
         {
-            StreamingImage.Source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, PixelFormats.Bgr32, null, image.Pixels, image.Stride);
+            var format = PixelFormats.Bgr32;
+            switch (image.BitsPerPixel)
+            {
+                case 1:
+                    format = PixelFormats.BlackWhite;
+                    break;
+
+                case 24:
+                    format = PixelFormats.Bgr24;
+                    break;
+
+                case 32:
+                    format = PixelFormats.Bgr32;
+                    break;
+            }
+
+            StreamingImage.Source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, format, null, image.Pixels, image.Stride);
         }
 
         private void ViewMenuItemCheckedEventHandler(object sender, RoutedEventArgs e)
