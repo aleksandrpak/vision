@@ -8,7 +8,9 @@ namespace Vision.Kinect
     {
         #region Fields
 
-        public const ushort MaxDepth = 8000;
+        public const ushort MaxDepth = 4000;
+
+        public const double DepthFrameHorizontalAngle = 70;
 
         public const int DepthFrameWidth = 512;
 
@@ -22,7 +24,7 @@ namespace Vision.Kinect
 
         private EventHandler<Image> _depthImageUpdated;
 
-        private EventHandler<byte[]> _depthDataReceived;
+        private EventHandler<ushort[]> _depthDataReceived;
 
         private int _colorImageSubscribers;
 
@@ -96,6 +98,8 @@ namespace Vision.Kinect
 
             frame.CopyFrameDataToArray(depthData);
 
+            RaiseDepthDataReceived(depthData);
+
             var colorIndex = 0;
             for (var depthIndex = 0; depthIndex < depthData.Length; ++depthIndex)
             {
@@ -110,17 +114,17 @@ namespace Vision.Kinect
                 pixelData[colorIndex++] = (byte)(depth == 0 ? 0 : 255 * greenIntensity); // Green
                 pixelData[colorIndex++] = (byte)(depth == 0 ? 0 : 255 * redIntensity); // Red
             }
-            
+
             RaiseDepthImageUpdated(new Image
-                {
-                    Width = DepthFrameWidth,
-                    Height = DepthFrameHeight,
-                    DpiX = 96.0,
-                    DpiY = 96.0,
-                    Pixels = pixelData,
-                    Stride = DepthFrameWidth * 3,
-                    BitsPerPixel = 24
-                });
+            {
+                Width = DepthFrameWidth,
+                Height = DepthFrameHeight,
+                DpiX = 96.0,
+                DpiY = 96.0,
+                Pixels = pixelData,
+                Stride = DepthFrameWidth * 3,
+                BitsPerPixel = 24
+            });
         }
 
         private void HandleColorFrame(ColorFrame frame)
@@ -139,15 +143,15 @@ namespace Vision.Kinect
                 frame.CopyConvertedFrameDataToArray(pixels, ColorImageFormat.Bgra);
 
             RaiseColorImageUpdated(new Image
-                {
-                    Width = width,
-                    Height = height,
-                    DpiX = 96.0,
-                    DpiY = 96.0,
-                    Pixels = pixels,
-                    Stride = width * 4,
-                    BitsPerPixel = 32
-                });
+            {
+                Width = width,
+                Height = height,
+                DpiX = 96.0,
+                DpiY = 96.0,
+                Pixels = pixels,
+                Stride = width * 4,
+                BitsPerPixel = 32
+            });
         }
 
         #endregion
@@ -193,7 +197,7 @@ namespace Vision.Kinect
             _depthImageUpdated?.Invoke(this, image);
         }
 
-        private void RaiseDepthDataReceived(byte[] data)
+        private void RaiseDepthDataReceived(ushort[] data)
         {
             _depthDataReceived?.Invoke(this, data);
         }
@@ -222,7 +226,7 @@ namespace Vision.Kinect
             }
         }
 
-        public event EventHandler<byte[]> DepthDataReceived
+        public event EventHandler<ushort[]> DepthDataReceived
         {
             add
             {
