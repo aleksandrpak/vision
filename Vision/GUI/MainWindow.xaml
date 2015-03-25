@@ -6,7 +6,16 @@
         xmlns:local="clr-namespace:Vision.GUI"
         mc:Ignorable="d"
         Title="MainWindow" Height="350" Width="525">
-    <Grid>
-        <Image Name="StreamingImage"></Image>
-    </Grid>
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_Вид">
+                <MenuItem Name="ColorMenuItem" IsCheckable="True" IsChecked="True" Header="_Цветной" />
+                <MenuItem Name="DepthMenuItem" IsCheckable="True" Header="_Глубина" />
+                <MenuItem Name="MapMenuItem" IsCheckable="True" Header="_Карта" />
+            </MenuItem>
+        </Menu>
+        <Grid>
+            <Image Name="StreamingImage"></Image>
+        </Grid>
+    </DockPanel>
 </Window>

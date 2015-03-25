@@ -1,21 +1,35 @@
 ﻿using System;
+using System.Linq;
 using Microsoft.Kinect;
 
 namespace Vision.Kinect
 {
     public sealed class Sensor
     {
+        #region Fields
+
+        private readonly KinectSensor _sensor;
+
+        private MultiSourceFrameReader _reader;
+
+        private EventHandler<Image> _colorImageUpdated;
+
+        private EventHandler<Image> _depthImageUpdated;
+
+        private int _colorImageSubscribers;
+
+        private int _depthImageSubscribers;
+
+        #endregion
+
         public Sensor()
         {
-            var sensor = KinectSensor.GetDefault();
+            _sensor = KinectSensor.GetDefault();
 
-            if (sensor == null)
+            if (_sensor == null)
                 throw new InvalidOperationException("Failed to initialize Kinect sensor.");
 
-            sensor.Open();
-            var reader = sensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Color);
-
-            reader.MultiSourceFrameArrived += MultiSourceFrameArrivedEventHandler;
+            _sensor.Open();
         }
 
         private void MultiSourceFrameArrivedEventHandler(object sender, MultiSourceFrameArrivedEventArgs args)
@@ -27,6 +41,41 @@ namespace Vision.Kinect
 
             using (var frame = reference.DepthFrameReference.AcquireFrame())
                 HandleDepthFrame(frame);
+        }
+
+        #region Frame Handling
+
+        private void InitializeReader()
+        {
+            var types = FrameSourceTypes.None;
+
+            if (_colorImageSubscribers > 0)
+                types |= FrameSourceTypes.Color;
+
+            if (_depthImageSubscribers > 0)
+                types |= FrameSourceTypes.Depth;
+
+            DestroyReader(types);
+            CreateReader(types);
+        }
+
+        private void CreateReader(FrameSourceTypes types)
+        {
+            if (_reader == null ? types == FrameSourceTypes.None : _reader.FrameSourceTypes == types)
+                return;
+           
+            _reader = _sensor.OpenMultiSourceFrameReader(types);
+            _reader.MultiSourceFrameArrived += MultiSourceFrameArrivedEventHandler;
+        }
+
+        private void DestroyReader(FrameSourceTypes types)
+        {
+            if (_reader == null || _reader.FrameSourceTypes == types)
+                return;
+
+            _reader.MultiSourceFrameArrived -= MultiSourceFrameArrivedEventHandler;
+            _reader.Dispose();
+            _reader = null;
         }
 
         private void HandleDepthFrame(DepthFrame frame)
@@ -98,18 +147,74 @@ namespace Vision.Kinect
                     Stride = stride
                 });
         }
+
+        #endregion
+
+        #region Events
+
+        private void AddEvent(ref EventHandler<Image> eventHandler, EventHandler<Image> value, ref int subscribers)
+        {
+            lock (_sensor) // We don't need high performance in this operation
+            {
+                eventHandler += value;
+                ++subscribers;
+
+                InitializeReader();
+            }
+        }
+
+        private void RemoveEvent(ref EventHandler<Image> eventHandler, EventHandler<Image> value, ref int subscribers)
+        {
+            lock (_sensor) // We don't need high performance in this operation
+            {
+                if (eventHandler == null)
+                    return;
+
+                if (!eventHandler.GetInvocationList().Contains(value))
+                    return;
+
+                // ReSharper disable once DelegateSubtraction
+                eventHandler -= value;
+                --subscribers;
+
+                InitializeReader();
+            }
+        }
+
         private void RaiseColorImageUpdated(Image image)
         {
-            ColorImageUpdated?.Invoke(this, image);
+            _colorImageUpdated?.Invoke(this, image);
         }
 
         private void RaiseDepthImageUpdated(Image image)
         {
-            DepthImageUpdated?.Invoke(this, image);
+            _depthImageUpdated?.Invoke(this, image);
         }
 
-        public event EventHandler<Image> ColorImageUpdated;
+        public event EventHandler<Image> ColorImageUpdated
+        {
+            add
+            {
+                AddEvent(ref _colorImageUpdated, value, ref _colorImageSubscribers);
+            }
+            remove
+            {
+                RemoveEvent(ref _colorImageUpdated, value, ref _colorImageSubscribers);
+            }
+        }
 
-        public event EventHandler<Image> DepthImageUpdated;
+        public event EventHandler<Image> DepthImageUpdated
+        {
+            add
+            {
+                AddEvent(ref _depthImageUpdated, value, ref _depthImageSubscribers);
+            }
+            remove
+            {
+                RemoveEvent(ref _depthImageUpdated, value, ref _depthImageSubscribers);
+            }
+        }
+
+        #endregion
     }
 }
