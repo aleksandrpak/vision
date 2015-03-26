@@ -42,8 +42,8 @@ namespace Vision.GUI
             var format = PixelFormats.Bgr32;
             switch (image.BitsPerPixel)
             {
-                case 1:
-                    format = PixelFormats.BlackWhite;
+                case 8:
+                    format = PixelFormats.Gray8;
                     break;
 
                 case 24:

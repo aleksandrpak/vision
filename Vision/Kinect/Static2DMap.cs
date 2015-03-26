@@ -1,27 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Vision.Kinect
 {
     public sealed class Static2DMap
     {
-        private readonly byte[] _map;
-
-        private readonly int _center;
-
-        private readonly int _width;
+        private readonly ushort[] _map;
 
         private double _currentAngle;
 
         public Static2DMap(Sensor sensor)
         {
-            _map = new byte[Sensor.MaxDepth * Sensor.MaxDepth * 4 / 8];
-
-            _center = Sensor.MaxDepth / 8;
-            _width = Sensor.MaxDepth * 2 / 8;
+            _map = new ushort[(int)(360.0 / (Sensor.DepthFrameHorizontalAngle / Sensor.DepthFrameWidth))];
 
             _currentAngle = 0;
 
@@ -35,46 +25,85 @@ namespace Vision.Kinect
 
         private void DepthDataReceivedEventHandler(object sender, ushort[] data)
         {
-            ClearMap();
-
-            // TODO: Get map from range of depths
-            var offset = Sensor.DepthFrameHeight / 2 * Sensor.DepthFrameWidth;
-
-            for (var i = 0; i < Sensor.DepthFrameWidth; ++i)
+            for (var j = 0; j < Sensor.DepthFrameWidth; ++j)
             {
-                var depth = Math.Min(Sensor.MaxDepth, data[i + offset]);
+                var minDepth = 0;
+                for (var i = Sensor.DepthFrameHeight / 2 - 50; i < Sensor.DepthFrameHeight / 2 + 50; ++i) // TODO: Use height of robot
+                {
+                    var depth = -Math.Min(Sensor.MaxDepth, data[i * Sensor.DepthFrameWidth + j]);
+                    if (depth < minDepth)
+                        minDepth = depth;
+                }
+
+                var angle = NormalizeAngle(_currentAngle - ((double)j / Sensor.DepthFrameWidth * Sensor.DepthFrameHorizontalAngle));
+                _map[(int)(angle / 360.0 * (_map.Length - 1))] = (ushort)(-minDepth);
+            }
+
+            if (MapImageUpdated == null)
+                return;
+
+            const double width = (double)Sensor.MaxDepth * 2 / 10;
+            var pixels = new byte[(int)width * (int)width];
+
+            for (var i = 0.0; i < _map.Length; ++i)
+            {
+                var depth = _map[(int)i] / 10;
                 if (depth == 0)
                     continue;
 
-                var angle = (double)i / Sensor.DepthFrameWidth * Sensor.DepthFrameHorizontalAngle;
-                angle -= 35;
+                var angle = i / _map.Length * 2 * Math.PI + 2.181661565; // + 125 degrees
+                var x = (int)((width / 2) + Math.Cos(angle) * depth);
+                var y = (int)((width / 2) - Math.Sin(angle) * depth);
 
-                var x = (int)(depth * Math.Cos(angle));
-                var y = (int)(depth * Math.Sin(angle));
-
-                var byteCoordinate = ((Sensor.MaxDepth - y) * _width) + ((Sensor.MaxDepth + x) / 8);
-                _map[byteCoordinate] |= (byte)(1 << (7 - (x % 8)));
+                SetPixels(pixels, (int)width, x, y);
             }
 
-            RaiseMapImageUpdated();
+            RaiseMapImageUpdated(pixels, (int)width, (int)width);
         }
 
-        private void ClearMap()
+        private static void SetPixels(IList<byte> pixels, int width, int x, int y)
         {
-            Array.Clear(_map, 0, _map.Length); // TODO: Clear using angle
+            if (y - 1 > 0)
+                SetPixelsRow(pixels, width, x, y - 1);
+
+            SetPixelsRow(pixels, width, x, y);
+
+            if ((y + 1) * width < pixels.Count)
+                SetPixelsRow(pixels, width, x, y + 1);
         }
 
-        private void RaiseMapImageUpdated()
+        private static void SetPixelsRow(IList<byte> pixels, int width, int x, int y)
+        {
+            var firstPixel = y * width + (x - 1);
+            if (firstPixel > 0)
+                pixels[firstPixel] = 255;
+
+            pixels[y * width + x] = 255;
+
+            var thirdPixel = y * width + (x + 1);
+            if (thirdPixel < pixels.Count)
+                pixels[thirdPixel] = 255;
+        }
+
+        private static double NormalizeAngle(double angle)
+        {
+            while (angle < 0 || angle > 360)
+                angle += angle < 0 ? 360 : -360;
+
+            return angle;
+        }
+
+        private void RaiseMapImageUpdated(byte[] pixels, int width, int height)
         {
             MapImageUpdated?.Invoke(this, new Image
             {
-                Width = Sensor.MaxDepth * 2,
-                Height = Sensor.MaxDepth * 2,
+                Width = width,
+                Height = height,
                 DpiX = 96.0,
                 DpiY = 96.0,
-                Pixels = _map,
-                Stride = Sensor.MaxDepth * 2 / 8,
-                BitsPerPixel = 1
+                Pixels = pixels,
+                Stride = width,
+                BitsPerPixel = 8
             });
         }
 

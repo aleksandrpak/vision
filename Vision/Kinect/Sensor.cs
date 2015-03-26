@@ -8,7 +8,7 @@ namespace Vision.Kinect
     {
         #region Fields
 
-        public const ushort MaxDepth = 4000;
+        public const ushort MaxDepth = 8000;
 
         public const double DepthFrameHorizontalAngle = 70;
 
@@ -28,7 +28,9 @@ namespace Vision.Kinect
 
         private int _colorImageSubscribers;
 
-        private int _depthSubscribers;
+        private int _depthImageSubscribers;
+
+        private int _depthDataSubscribers;
 
         #endregion
 
@@ -62,7 +64,7 @@ namespace Vision.Kinect
             if (_colorImageSubscribers > 0)
                 types |= FrameSourceTypes.Color;
 
-            if (_depthSubscribers > 0)
+            if (_depthImageSubscribers + _depthDataSubscribers > 0)
                 types |= FrameSourceTypes.Depth;
 
             DestroyReader(types);
@@ -94,13 +96,17 @@ namespace Vision.Kinect
                 return;
 
             var depthData = new ushort[DepthFrameWidth * DepthFrameHeight];
-            var pixelData = new byte[DepthFrameWidth * DepthFrameHeight * 3];
 
             frame.CopyFrameDataToArray(depthData);
 
-            RaiseDepthDataReceived(depthData);
+            if (_depthDataSubscribers > 0)
+                RaiseDepthDataReceived(depthData);
 
-            var colorIndex = 0;
+            if (_depthImageSubscribers < 1)
+                return;
+
+            var pixelData = new byte[DepthFrameWidth * DepthFrameHeight * 3];
+
             for (var depthIndex = 0; depthIndex < depthData.Length; ++depthIndex)
             {
                 var depth = Math.Min(depthData[depthIndex], MaxDepth);
@@ -110,9 +116,9 @@ namespace Vision.Kinect
                 var greenIntensity = percent > 0.5 ? 1 - percent : percent * 2;
                 var redIntensity = Math.Max(0, 1 - percent * 2);
 
-                pixelData[colorIndex++] = (byte)(depth == 0 ? 0 : 255 * blueIntensity); // Blue
-                pixelData[colorIndex++] = (byte)(depth == 0 ? 0 : 255 * greenIntensity); // Green
-                pixelData[colorIndex++] = (byte)(depth == 0 ? 0 : 255 * redIntensity); // Red
+                pixelData[depthIndex * 3] = (byte)(depth == 0 ? 0 : 255 * blueIntensity); // Blue
+                pixelData[depthIndex * 3 + 1] = (byte)(depth == 0 ? 0 : 255 * greenIntensity); // Green
+                pixelData[depthIndex * 3 + 2] = (byte)(depth == 0 ? 0 : 255 * redIntensity); // Red
             }
 
             RaiseDepthImageUpdated(new Image
@@ -218,11 +224,11 @@ namespace Vision.Kinect
         {
             add
             {
-                AddEvent(ref _depthImageUpdated, value, ref _depthSubscribers);
+                AddEvent(ref _depthImageUpdated, value, ref _depthImageSubscribers);
             }
             remove
             {
-                RemoveEvent(ref _depthImageUpdated, value, ref _depthSubscribers);
+                RemoveEvent(ref _depthImageUpdated, value, ref _depthImageSubscribers);
             }
         }
 
@@ -230,11 +236,11 @@ namespace Vision.Kinect
         {
             add
             {
-                AddEvent(ref _depthDataReceived, value, ref _depthSubscribers);
+                AddEvent(ref _depthDataReceived, value, ref _depthDataSubscribers);
             }
             remove
             {
-                RemoveEvent(ref _depthDataReceived, value, ref _depthSubscribers);
+                RemoveEvent(ref _depthDataReceived, value, ref _depthDataSubscribers);
             }
         }
 
