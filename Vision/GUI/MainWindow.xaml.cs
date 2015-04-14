@@ -1,8 +1,16 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Vision.Kinect;
+using Image = Vision.Kinect.Image;
+using PixelFormat = System.Drawing.Imaging.PixelFormat;
+using Point = System.Drawing.Point;
 
 namespace Vision.GUI
 {
@@ -19,18 +27,22 @@ namespace Vision.GUI
 
         private int _framesShowed;
 
+        private Bitmap _modelImage;
+
         public MainWindow()
         {
             _sensor = new Sensor();
             var map = new Static2DMap(_sensor);
             _frameWatch = Stopwatch.StartNew();
 
+            _modelImage = new Bitmap(Path.GetFullPath("../../../checkboard.png"));
+
             InitializeComponent();
 
             ColorMenuItem.IsChecked = true;
-            DepthMenuItem.IsChecked = true;
+            //DepthMenuItem.IsChecked = true;
 
-            map.MapImageUpdated += ImageUpdatedEventHandler;
+            //map.MapImageUpdated += ImageUpdatedEventHandler;
 
             ColorMenuItem.Checked += ViewMenuItemCheckedEventHandler;
             ColorMenuItem.Unchecked += ViewMenuItemCheckedEventHandler;
@@ -90,12 +102,26 @@ namespace Vision.GUI
                     break;
 
                 case 32:
-                    format = PixelFormats.Bgr32;
+                    format = PixelFormats.Gray8;
                     imageControl = ColorImage;
                     break;
             }
 
-            imageControl.Source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, format, null, image.Pixels, image.Stride);
+            var source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, format, null, image.Pixels, image.Stride);
+            imageControl.Source = source;
+
+            long matchTime = -1;
+
+            if (ReferenceEquals(imageControl, ColorImage))
+            {
+                //Matcher.Foo(_modelImage, GetBitmap(source));
+                var recognizedImage = Matcher.Draw(_modelImage, GetBitmap(source), out matchTime);
+                RecongnizedImage.Source = Imaging.CreateBitmapSourceFromHBitmap(
+                    recognizedImage.GetHbitmap(),
+                    IntPtr.Zero,
+                    Int32Rect.Empty,
+                    BitmapSizeOptions.FromEmptyOptions());
+            }
 
             ++_framesShowed;
 
@@ -103,10 +129,31 @@ namespace Vision.GUI
             if (currentSecond == _lastSecond)
                 return;
 
-            Title = string.Format("Vision: {0} frames processed in total", _framesShowed);
+            Title = string.Format("Vision: {0} frames processed in total. {1}",
+                _framesShowed,
+                matchTime >= 0 ? string.Format("Matched in {0}", matchTime) : string.Empty);
 
             _lastSecond = currentSecond;
             _framesShowed = 0;
+        }
+
+        private Bitmap GetBitmap(BitmapSource source)
+        {
+            Bitmap bmp = new Bitmap(
+                source.PixelWidth,
+                source.PixelHeight,
+                PixelFormat.Format8bppIndexed);
+            BitmapData data = bmp.LockBits(
+              new Rectangle(Point.Empty, bmp.Size),
+              ImageLockMode.WriteOnly,
+              PixelFormat.Format8bppIndexed);
+            source.CopyPixels(
+              Int32Rect.Empty,
+              data.Scan0,
+              data.Height * data.Stride,
+              data.Stride);
+            bmp.UnlockBits(data);
+            return bmp;
         }
 
         private void ViewMenuItemCheckedEventHandler(object sender, RoutedEventArgs e)

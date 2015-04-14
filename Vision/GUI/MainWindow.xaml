@@ -24,8 +24,9 @@
             <Image Name="DepthImage" Grid.Column="0" Margin="4" />
             
             <Rectangle VerticalAlignment="Stretch" Grid.Column="1" Width="1" Stroke="Black" />
-            
+
             <Image Name="MapImage" Grid.Column="2" Margin="4" />
+            <Image Name="RecongnizedImage" Grid.Column="2" Margin="4" />
         </Grid>
     </DockPanel>
 </Window>

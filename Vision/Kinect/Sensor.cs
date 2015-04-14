@@ -188,7 +188,9 @@ namespace Vision.Kinect
                     index += width * 4;
                 }
 
-                pixels = newPixels;
+                pixels = resizePixels(newPixels, width, height, 512, 397);
+                width = 512;
+                height = 397;
             }
 
             RaiseColorImageUpdated(new Image
@@ -198,11 +200,34 @@ namespace Vision.Kinect
                 DpiX = 96.0,
                 DpiY = 96.0,
                 Pixels = pixels,
-                Stride = width * 4,
+                Stride = width,
                 BitsPerPixel = 32
             });
 
             Monitor.Exit(_sensor);
+        }
+        private static byte[] resizePixels(byte[] pixels, int w1, int h1, int w2, int h2)
+        {
+            byte[] temp = new byte[w2 * h2];
+            // EDIT: added +1 to account for an early rounding problem
+            int x_ratio = (int)((w1 << 16) / w2) + 1;
+            int y_ratio = (int)((h1 << 16) / h2) + 1;
+            //int x_ratio = (int)((w1<<16)/w2) ;
+            //int y_ratio = (int)((h1<<16)/h2) ;
+            int x2, y2;
+            for (int i = 0; i < h2; i++)
+            {
+                for (int j = 0; j < w2; j++)
+                {
+                    x2 = ((j * x_ratio) >> 16);
+                    y2 = ((i * y_ratio) >> 16);
+
+                    var offset = ((y2 * w1) + x2) * 4;
+                    temp[(i * w2) + j] = (byte)((pixels[offset] * 0.07) + (pixels[offset + 1] * 0.72) + (pixels[offset + 2] * 0.21));
+
+                }
+            }
+            return temp;
         }
 
         #endregion
