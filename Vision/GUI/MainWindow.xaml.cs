@@ -1,8 +1,12 @@
 ﻿using System.Diagnostics;
+using System.IO;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using ARWrapper;
 using Vision.Kinect;
+using PixelFormat = ARWrapper.PixelFormat;
 
 namespace Vision.GUI
 {
@@ -12,6 +16,8 @@ namespace Vision.GUI
     public partial class MainWindow
     {
         private readonly Sensor _sensor;
+
+        private readonly Tracker _tracker;
 
         private readonly Stopwatch _frameWatch;
 
@@ -23,12 +29,18 @@ namespace Vision.GUI
         {
             _sensor = new Sensor();
             var map = new Static2DMap(_sensor);
-            _frameWatch = Stopwatch.StartNew();
+
+            // TODO: Allow to configure merge parameters
+            var markerboardFilename = Path.GetFullPath("Data/markerboard.cfg");
+            var cameraCalibrationFilename = Path.GetFullPath("Data/kinect.cal");
+            _tracker = new Tracker(Sensor.ColorFrameWidth, Sensor.ColorFrameHeight, 42, 4, PixelFormat.Bgra, cameraCalibrationFilename, markerboardFilename);
 
             InitializeComponent();
 
             ColorMenuItem.IsChecked = true;
             DepthMenuItem.IsChecked = true;
+
+            _frameWatch = Stopwatch.StartNew();
 
             map.MapImageUpdated += ImageUpdatedEventHandler;
 
@@ -38,6 +50,34 @@ namespace Vision.GUI
             DepthMenuItem.Unchecked += ViewMenuItemCheckedEventHandler;
 
             UpdateImageVisibility();
+        }
+
+
+        // TODO: Code for printscreen
+        private int counter = 0;
+        protected override void OnPreviewKeyUp(KeyEventArgs e)
+        {
+            base.OnPreviewKeyUp(e);
+
+            if (e.Key == Key.P)
+            {
+                var source = ColorImage.Source as BitmapSource;
+                WriteJpeg(string.Format("{0}.jpg", ++counter), 95, source);
+            }
+        }
+
+        static void WriteJpeg(string fileName, int quality, BitmapSource bmp)
+        {
+
+            JpegBitmapEncoder encoder = new JpegBitmapEncoder();
+            BitmapFrame outputFrame = BitmapFrame.Create(bmp);
+            encoder.Frames.Add(outputFrame);
+            encoder.QualityLevel = quality;
+
+            using (FileStream file = File.OpenWrite(fileName))
+            {
+                encoder.Save(file);
+            }
         }
 
         // TODO: Code for adjusting of merging
@@ -96,6 +136,9 @@ namespace Vision.GUI
             }
 
             imageControl.Source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, format, null, image.Pixels, image.Stride);
+
+            if (image.BitsPerPixel == 32)
+                _tracker.Track(image.Pixels);
 
             ++_framesShowed;
 

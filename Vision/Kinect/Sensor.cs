@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Threading;
+using System.Windows.Forms;
 using Microsoft.Kinect;
 
 namespace Vision.Kinect
@@ -48,7 +49,7 @@ namespace Vision.Kinect
 
             _sensor.Open();
 
-            MergeColorAndDepth = true;
+            MergeColorAndDepth = false;
         }
 
         public bool MergeColorAndDepth { get; set; }
@@ -170,7 +171,7 @@ namespace Vision.Kinect
                 frame.CopyRawFrameDataToArray(pixels);
             else
                 frame.CopyConvertedFrameDataToArray(pixels, ColorImageFormat.Bgra);
-
+            
             if (MergeColorAndDepth)
             {
                 // TODO: Allow to configure merge parameters
