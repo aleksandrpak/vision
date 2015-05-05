@@ -1,17 +1,22 @@
 ﻿using System;
 using System.Linq;
 using System.Threading;
+using jp.nyatla.nyartoolkit.cs.core;
+using jp.nyatla.nyartoolkit.cs.markersystem;
 using Microsoft.Kinect;
+using Vision.Processing;
 
 namespace Vision.Kinect
 {
-    public sealed class Sensor
+    public sealed class Sensor : NyARSensor
     {
         #region Fields
 
         public const ushort MaxDepth = 8000;
 
         public const double DepthFrameHorizontalAngle = 70;
+
+        public const double DepthFrameVerticalAngle = 70;
 
         public const int DepthFrameWidth = 512;
 
@@ -24,6 +29,16 @@ namespace Vision.Kinect
         private readonly KinectSensor _sensor;
 
         private MultiSourceFrameReader _reader;
+
+        private bool _mergeColorAndDepth;
+
+        private readonly ushort[] _depthData;
+
+        private byte[] _depthImageBytes;
+
+        private readonly byte[] _colorImageData;
+
+        private byte[] _colorImageBytes;
 
         private EventHandler<Image> _colorImageUpdated;
 
@@ -40,28 +55,82 @@ namespace Vision.Kinect
         #endregion
 
         public Sensor()
+            : base(new NyARIntSize((int)((ColorFrameWidth / 707.0) * 513.0), ColorFrameHeight))
         {
             _sensor = KinectSensor.GetDefault();
+
+            MergeColorAndDepth = true;
+            _depthData = new ushort[DepthFrameWidth * DepthFrameHeight];
+            _depthImageBytes = new byte[DepthFrameWidth * CurrentDepthHeight * 3];
+
+            _colorImageData = new byte[ColorFrameWidth * ColorFrameHeight * 4];
+            _colorImageBytes = new byte[CurrentColorWidth * ColorFrameHeight * 4];
 
             if (_sensor == null)
                 throw new InvalidOperationException("Failed to initialize Kinect sensor.");
 
             _sensor.Open();
 
-            MergeColorAndDepth = true;
+            Thread.Sleep(1000); // Let it initialize
+
+            if (!_sensor.IsOpen || !_sensor.IsAvailable)
+                throw new InvalidOperationException("Failed to open Kinect sensor.");
+
         }
 
-        public bool MergeColorAndDepth { get; set; }
+        public bool IsConnected => _sensor.IsOpen && _sensor.IsAvailable;
+
+        public bool MergeColorAndDepth
+        {
+            get { return _mergeColorAndDepth; }
+            set
+            {
+                if (_mergeColorAndDepth == value)
+                    return;
+
+                _mergeColorAndDepth = value;
+                _depthImageBytes = new byte[DepthFrameWidth * CurrentDepthHeight * 3];
+                _colorImageBytes = new byte[CurrentColorWidth * ColorFrameHeight * 4];
+            }
+        }
+
+        public int CurrentColorWidth => MergeColorAndDepth ? (int)((ColorFrameWidth / 707.0) * 513.0) : ColorFrameWidth;
+
+        // TODO: Allow to configure merge parameters
+        // Merge Point 
+        // Margin: 98,98,98,98. Depth: 513, 424.828125, Color: 707, 397.6875
+        public int CurrentDepthHeight => MergeColorAndDepth ? 397 : DepthFrameHeight;
 
         private void MultiSourceFrameArrivedEventHandler(object sender, MultiSourceFrameArrivedEventArgs args)
         {
-            var reference = args.FrameReference.AcquireFrame();
+            using (var image = new SensorImage(this))
+            {
+                if (!image.IsLocked)
+                    return;
 
-            using (var frame = reference.ColorFrameReference.AcquireFrame())
-                HandleColorFrame(frame);
+                var reference = args.FrameReference.AcquireFrame();
 
-            using (var frame = reference.DepthFrameReference.AcquireFrame())
-                HandleDepthFrame(frame);
+                if (_colorImageSubscribers > 0)
+                {
+                    using (var frame = reference.ColorFrameReference.AcquireFrame())
+                        image.LoadColorFrame(frame, _colorImageData, _colorImageBytes, CurrentColorWidth, MergeColorAndDepth);
+                }
+
+                using (var frame = reference.DepthFrameReference.AcquireFrame())
+                    image.LoadDepthFrame(frame, _depthData, _depthImageSubscribers > 0, _depthImageBytes, CurrentDepthHeight);
+                
+                if (image.ColorImage != null)
+                {
+                    update(image.ColorImage.Value);
+                    RaiseColorImageUpdated(image.ColorImage.Value);
+                }
+
+                if (_depthDataSubscribers > 0 && image.DepthData != null)
+                    RaiseDepthDataReceived(image.DepthData);
+
+                if (image.DepthImage != null)
+                    RaiseDepthImageUpdated(image.DepthImage.Value);
+            }
         }
 
         #region Frame Handling
@@ -97,112 +166,6 @@ namespace Vision.Kinect
             _reader.MultiSourceFrameArrived -= MultiSourceFrameArrivedEventHandler;
             _reader.Dispose();
             _reader = null;
-        }
-
-        private void HandleDepthFrame(DepthFrame frame)
-        {
-            if (frame == null || !Monitor.TryEnter(_sensor))
-                return;
-
-            var depthData = new ushort[DepthFrameWidth * DepthFrameHeight];
-
-            frame.CopyFrameDataToArray(depthData);
-
-            if (_depthDataSubscribers > 0)
-                RaiseDepthDataReceived(depthData);
-
-            if (_depthImageSubscribers < 1)
-            {
-                Monitor.Exit(_sensor);
-                return;
-            }
-
-            // TODO: Allow to configure merge parameters
-            // Merge Point 
-            // Margin: 98,98,98,98. Depth: 513, 424.828125, Color: 707, 397.6875
-            var height = MergeColorAndDepth ? 397 : DepthFrameHeight;
-            var skipCount = (DepthFrameHeight - height) / 2;
-            var pixelData = new byte[DepthFrameWidth * height * 3];
-            var index = 0;
-
-            for (var depthIndex = 0; depthIndex < depthData.Length; ++depthIndex)
-            {
-                if (depthIndex / DepthFrameWidth < skipCount || depthIndex / DepthFrameWidth >= height + skipCount)
-                    continue;
-
-                var depth = Math.Min(depthData[depthIndex], MaxDepth);
-                var percent = (double)depth / MaxDepth;
-
-                var blueIntensity = percent > 0.5 ? (percent - 0.5) * 2 : 0;
-                var greenIntensity = percent > 0.5 ? 1 - percent : percent * 2;
-                var redIntensity = Math.Max(0, 1 - percent * 2);
-
-                pixelData[index++] = (byte)(depth == 0 ? 0 : 255 * blueIntensity); // Blue
-                pixelData[index++] = (byte)(depth == 0 ? 0 : 255 * greenIntensity); // Green
-                pixelData[index++] = (byte)(depth == 0 ? 0 : 255 * redIntensity); // Red
-            }
-
-            RaiseDepthImageUpdated(new Image
-            {
-                Width = DepthFrameWidth,
-                Height = height,
-                DpiX = 96.0,
-                DpiY = 96.0,
-                Pixels = pixelData,
-                Stride = DepthFrameWidth * 3,
-                BitsPerPixel = 24
-            });
-
-            Monitor.Exit(_sensor);
-        }
-
-        private void HandleColorFrame(ColorFrame frame)
-        {
-            if (frame == null || !Monitor.TryEnter(_sensor))
-                return;
-
-            var width = ColorFrameWidth;
-            var height = ColorFrameHeight;
-
-            var pixels = new byte[width * height * 4];
-
-            if (frame.RawColorImageFormat == ColorImageFormat.Bgra)
-                frame.CopyRawFrameDataToArray(pixels);
-            else
-                frame.CopyConvertedFrameDataToArray(pixels, ColorImageFormat.Bgra);
-
-            if (MergeColorAndDepth)
-            {
-                // TODO: Allow to configure merge parameters
-                // Merge Point 
-                // Margin: 98,98,98,98. Depth: 513, 424.828125, Color: 707, 397.6875
-                width = (int)((ColorFrameWidth / 707.0) * 513.0);
-
-                var index = 0;
-                var skipCount = (ColorFrameWidth - width) / 2;
-                var newPixels = new byte[width * height * 4];
-
-                for (var i = 0; i < ColorFrameHeight; ++i)
-                {
-                    Array.Copy(pixels, ((i * ColorFrameWidth) + skipCount) * 4, newPixels, index, width * 4);
-                    index += width * 4;
-                }
-
-                pixels = newPixels;
-            }
-
-            RaiseColorImageUpdated(new Image
-            {
-                Width = width,
-                Height = height,
-                DpiX = 96.0,
-                DpiY = 96.0,
-                Pixels = pixels,
-                Stride = width * 4,
-                BitsPerPixel = 32
-            });
-
-            Monitor.Exit(_sensor);
         }
 
         #endregion

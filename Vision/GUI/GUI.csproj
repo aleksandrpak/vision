@@ -8,7 +8,7 @@
     <OutputType>WinExe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Vision.GUI</RootNamespace>
-    <AssemblyName>GUI</AssemblyName>
+    <AssemblyName>Vision.GUI</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
@@ -34,6 +34,12 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="NyARToolkitCS">
+      <HintPath>..\libs\NyARToolkitCS.dll</HintPath>
+    </Reference>
+    <Reference Include="NyARToolkitCS.markersystem">
+      <HintPath>..\libs\NyARToolkitCS.markersystem.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Core" />
@@ -80,6 +86,9 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+    <None Include="Data\patt.hiro">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
@@ -93,6 +102,10 @@
     <ProjectReference Include="..\Kinect\Kinect.csproj">
       <Project>{3A5CDD87-596B-4BB3-BAE3-20A91A6EBF39}</Project>
       <Name>Kinect</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Processing\Processing.csproj">
+      <Project>{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}</Project>
+      <Name>Processing</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

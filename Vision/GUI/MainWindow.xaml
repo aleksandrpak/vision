@@ -12,6 +12,11 @@
                 <MenuItem Name="ColorMenuItem" IsCheckable="True" Header="_Color" />
                 <MenuItem Name="DepthMenuItem" IsCheckable="True" Header="_Depth" />
             </MenuItem>
+            <MenuItem Header="Devices">
+                <MenuItem Header="Kinect">
+                    <MenuItem Name="KinectStatusMenuItem" Header="KinectStatus" Click="KinectStatusMenuItemClickEventHandler" Loaded="KinectStatusMenuItemLoadedEventHandler" />
+                </MenuItem>
+            </MenuItem>
         </Menu>
         <Grid>
             <Grid.ColumnDefinitions>
@@ -22,6 +27,7 @@
             
             <Image Name="ColorImage" Grid.Column="0" Margin="4" />
             <Image Name="DepthImage" Grid.Column="0" Margin="4" />
+            <Image Name="MarkerImage" Grid.Column="0" Margin="4" />
             
             <Rectangle VerticalAlignment="Stretch" Grid.Column="1" Width="1" Stroke="Black" />
             

@@ -1,7 +1,12 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using jp.nyatla.nyartoolkit.cs.markersystem;
+using Vision.Processing;
 using Vision.Kinect;
 
 namespace Vision.GUI
@@ -11,7 +16,11 @@ namespace Vision.GUI
     /// </summary>
     public partial class MainWindow
     {
-        private readonly Sensor _sensor;
+        private Sensor _sensor;
+
+        private NyARMarkerSystem _markerSystem;
+
+        private readonly List<int> _markers;
 
         private readonly Stopwatch _frameWatch;
 
@@ -21,8 +30,8 @@ namespace Vision.GUI
 
         public MainWindow()
         {
-            _sensor = new Sensor();
-            var map = new Static2DMap(_sensor);
+            _markers = new List<int>();
+
             _frameWatch = Stopwatch.StartNew();
 
             InitializeComponent();
@@ -30,14 +39,54 @@ namespace Vision.GUI
             ColorMenuItem.IsChecked = true;
             DepthMenuItem.IsChecked = true;
 
-            map.MapImageUpdated += ImageUpdatedEventHandler;
-
             ColorMenuItem.Checked += ViewMenuItemCheckedEventHandler;
             ColorMenuItem.Unchecked += ViewMenuItemCheckedEventHandler;
             DepthMenuItem.Checked += ViewMenuItemCheckedEventHandler;
             DepthMenuItem.Unchecked += ViewMenuItemCheckedEventHandler;
 
+            InitializeSensor();
+        }
+
+        private void InitializeSensor()
+        {
+            try
+            {
+                _sensor = new Sensor();
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(this, exception.Message, exception.GetType().Name, MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.MaxDepth);
+            _sensor.DepthDataReceived += (sender, data) => map.Update(data);
+
+            map.MapImageUpdated += ImageUpdatedEventHandler;
+
+            _markerSystem = new NyARMarkerSystem(new NyARMarkerSystemConfig(_sensor.CurrentColorWidth, Sensor.ColorFrameHeight));
+            _markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80));
+
             UpdateImageVisibility();
+        }
+
+        private void KinectStatusMenuItemClickEventHandler(object sender, RoutedEventArgs e)
+        {
+            InitializeSensor();
+            UpdateKinectStatus();
+        }
+
+        private void KinectStatusMenuItemLoadedEventHandler(object sender, RoutedEventArgs e)
+        {
+            UpdateKinectStatus();
+        }
+
+        private void UpdateKinectStatus()
+        {
+            var isOpen = _sensor != null && _sensor.IsConnected;
+
+            KinectStatusMenuItem.IsEnabled = !isOpen;
+            KinectStatusMenuItem.Header = isOpen ? "Connected" : "Connect";
         }
 
         // TODO: Code for adjusting of merging
@@ -95,6 +144,40 @@ namespace Vision.GUI
                     break;
             }
 
+            if (format == PixelFormats.Bgr32)
+            {
+                try
+                {
+                    MarkerImage.Visibility = Visibility.Hidden;
+
+                    _markerSystem.update(_sensor);
+                    if (_markerSystem.isExistMarker(_markers[0]))
+                    {
+                        var points = _markerSystem.getMarkerVertex2D(_markers[0]);
+                        var visual = new DrawingVisual();
+                        var context = visual.RenderOpen();
+                        for (var i = 0; i < points.Length; i++)
+                        {
+                            var a = points[i];
+                            var b = i == points.Length - 1 ? points[0] : points[i + 1];
+
+                            context.DrawLine(new Pen(Brushes.DarkRed, 3), new Point(a.x, a.y), new Point(b.x, b.y));
+                        }
+
+                        context.Close();
+
+                        var bitmap = new RenderTargetBitmap(image.Width, image.Height, 96, 96, PixelFormats.Pbgra32);
+                        bitmap.Render(visual);
+                        MarkerImage.Source = bitmap;
+                        MarkerImage.Visibility = Visibility.Visible;
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+            }
+
             imageControl.Source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, format, null, image.Pixels, image.Stride);
 
             ++_framesShowed;
@@ -103,7 +186,7 @@ namespace Vision.GUI
             if (currentSecond == _lastSecond)
                 return;
 
-            Title = string.Format("Vision: {0} frames processed in total", _framesShowed);
+            Title = $"Vision: {_framesShowed} frames processed in total";
 
             _lastSecond = currentSecond;
             _framesShowed = 0;
@@ -116,15 +199,19 @@ namespace Vision.GUI
 
         private void UpdateImageVisibility()
         {
-            _sensor.ColorImageUpdated -= ImageUpdatedEventHandler;
-            _sensor.DepthImageUpdated -= ImageUpdatedEventHandler;
+            if (_sensor != null)
+            {
+                _sensor.ColorImageUpdated -= ImageUpdatedEventHandler;
+                _sensor.DepthImageUpdated -= ImageUpdatedEventHandler;
 
-            if (ColorMenuItem.IsChecked)
-                _sensor.ColorImageUpdated += ImageUpdatedEventHandler;
+                if (ColorMenuItem.IsChecked)
+                    _sensor.ColorImageUpdated += ImageUpdatedEventHandler;
 
-            if (DepthMenuItem.IsChecked)
-                _sensor.DepthImageUpdated += ImageUpdatedEventHandler;
+                if (DepthMenuItem.IsChecked)
+                    _sensor.DepthImageUpdated += ImageUpdatedEventHandler;
+            }
 
+            MarkerImage.Visibility = Visibility.Hidden;
             ColorImage.Visibility = ColorMenuItem.IsChecked ? Visibility.Visible : Visibility.Hidden;
             DepthImage.Visibility = DepthMenuItem.IsChecked ? Visibility.Visible : Visibility.Hidden;
 

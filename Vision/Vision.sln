@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kinect", "Kinect\Kinect.csp
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GUI", "GUI\GUI.csproj", "{6E4C1E2D-4FC7-409E-82D9-79DAFCA0EE71}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Processing", "Processing\Processing.csproj", "{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,6 +43,18 @@ Global
 		{6E4C1E2D-4FC7-409E-82D9-79DAFCA0EE71}.Release|x64.Build.0 = Release|Any CPU
 		{6E4C1E2D-4FC7-409E-82D9-79DAFCA0EE71}.Release|x86.ActiveCfg = Release|Any CPU
 		{6E4C1E2D-4FC7-409E-82D9-79DAFCA0EE71}.Release|x86.Build.0 = Release|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Debug|x64.Build.0 = Debug|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Debug|x86.Build.0 = Debug|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Release|x64.ActiveCfg = Release|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Release|x64.Build.0 = Release|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Release|x86.ActiveCfg = Release|Any CPU
+		{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

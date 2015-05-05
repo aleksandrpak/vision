@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace Vision.Kinect
+namespace Vision.Processing
 {
     public sealed class Static2DMap
     {
@@ -9,13 +9,16 @@ namespace Vision.Kinect
 
         private double _currentAngle;
 
-        public Static2DMap(Sensor sensor)
+        public Static2DMap(int width, int height, double horizontalAngle, ushort maxDepth)
         {
-            _map = new ushort[(int)(360.0 / (Sensor.DepthFrameHorizontalAngle / Sensor.DepthFrameWidth))];
+            Width = width;
+            Height = height;
+            HorizontalAngle = horizontalAngle;
+            MaxDepth = maxDepth;
+
+            _map = new ushort[(int)(360.0 / (HorizontalAngle / Width))];
 
             _currentAngle = 0;
-
-            sensor.DepthDataReceived += DepthDataReceivedEventHandler;
         }
 
         public void Rotate(double angle)
@@ -23,26 +26,34 @@ namespace Vision.Kinect
             _currentAngle += angle;
         }
 
-        private void DepthDataReceivedEventHandler(object sender, ushort[] data)
+        public int Width { get; }
+
+        public int Height { get; }
+
+        public double HorizontalAngle { get; }
+
+        public ushort MaxDepth { get; }
+
+        public void Update(ushort[] data)
         {
-            for (var j = 0; j < Sensor.DepthFrameWidth; ++j)
+            for (var j = 0; j < Width; ++j)
             {
                 var minDepth = 0;
-                for (var i = Sensor.DepthFrameHeight / 2 - 50; i < Sensor.DepthFrameHeight / 2 + 50; ++i) // TODO: Use height of robot
+                for (var i = Height / 2 - 50; i < Height / 2 + 50; ++i) // TODO: Use height of robot
                 {
-                    var depth = -Math.Min(Sensor.MaxDepth, data[i * Sensor.DepthFrameWidth + j]);
+                    var depth = -Math.Min(MaxDepth, data[i * Width + j]);
                     if (depth < minDepth)
                         minDepth = depth;
                 }
 
-                var angle = NormalizeAngle(_currentAngle - ((double)j / Sensor.DepthFrameWidth * Sensor.DepthFrameHorizontalAngle));
+                var angle = NormalizeAngle(_currentAngle - ((double)j / Width * HorizontalAngle));
                 _map[(int)(angle / 360.0 * (_map.Length - 1))] = (ushort)(-minDepth);
             }
 
             if (MapImageUpdated == null)
                 return;
 
-            const double width = (double)Sensor.MaxDepth * 2 / 10;
+            var width = (double)MaxDepth * 2 / 10;
             var pixels = new byte[(int)width * (int)width];
 
             for (var i = 0.0; i < _map.Length; ++i)
