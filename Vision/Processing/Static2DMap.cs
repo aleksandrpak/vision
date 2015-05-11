@@ -47,7 +47,12 @@ namespace Vision.Processing
                 }
 
                 var angle = NormalizeAngle(_currentAngle - ((double)j / Width * HorizontalAngle));
-                _map[(int)(angle / 360.0 * (_map.Length - 1))] = (ushort)(-minDepth);
+                var screenAngle = (j - Width / 2) / (double)Width * 70.0;
+
+                minDepth = -minDepth;
+                minDepth = (int)(minDepth / Math.Sin((90 - screenAngle) * Math.PI / 180.0));
+
+                _map[(int)(angle / 360.0 * (_map.Length - 1))] = (ushort)minDepth;
             }
 
             if (MapImageUpdated == null)

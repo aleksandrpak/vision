@@ -177,7 +177,7 @@ namespace Vision.GUI
                     // ignored
                 }
             }
-
+             
             imageControl.Source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, format, null, image.Pixels, image.Stride);
 
             ++_framesShowed;
