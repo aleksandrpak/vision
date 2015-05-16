@@ -2,12 +2,17 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Ports;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using jp.nyatla.nyartoolkit.cs.markersystem;
-using Vision.Processing;
 using Vision.Kinect;
+using Vision.Processing;
+using Image = Vision.Processing.Image;
 
 namespace Vision.GUI
 {
@@ -27,6 +32,8 @@ namespace Vision.GUI
         private long _lastSecond;
 
         private int _framesShowed;
+
+        private SerialPort _servo;
 
         public MainWindow()
         {
@@ -79,6 +86,86 @@ namespace Vision.GUI
         private void KinectStatusMenuItemLoadedEventHandler(object sender, RoutedEventArgs e)
         {
             UpdateKinectStatus();
+        }
+
+        private void ServoMenuItemLoadedEventHandler(object sender, RoutedEventArgs e)
+        {
+            var servoMenuItem = (MenuItem)sender;
+
+            servoMenuItem.Items.Clear();
+
+            var ports = SerialPort.GetPortNames();
+            if (ports.Length == 0)
+            {
+                servoMenuItem.Items.Add(new MenuItem
+                {
+                    Header = "Empty",
+                    IsEnabled = false
+                });
+            }
+            else
+            {
+                foreach (var port in ports)
+                {
+                    var menuItem = new MenuItem { Header = port };
+                    menuItem.Click += PortMenuClickEventHandler;
+
+                    servoMenuItem.Items.Add(menuItem);
+                }
+            }
+        }
+
+        private void PortMenuClickEventHandler(object sender, RoutedEventArgs routedEventArgs)
+        {
+            var menuItem = (MenuItem)sender;
+            ConnectToServo(menuItem.Header.ToString());
+        }
+
+        private void ConnectToServo(string port)
+        {
+            _servo = new SerialPort(port, 9600);
+            _servo.Open();
+
+            _servo.Write(new[] { (byte)90 }, 0, 1);
+
+            Task.Run(() =>
+            {
+                var angle = 90;
+
+                var isUp = true;
+                while (true)
+                {
+                    var shift = 5;
+
+                    if (isUp)
+                    {
+                        if (angle < 180)
+                        {
+                            angle += shift;
+                        }
+                        else
+                        {
+                            isUp = false;
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        if (angle > 0)
+                        {
+                            angle -= shift;
+                        }
+                        else
+                        {
+                            isUp = true;
+                            continue;
+                        }
+                    }
+
+                    _servo.Write(new[] { (byte)angle }, 0, 1);
+                    Thread.Sleep(100);
+                }
+            });
         }
 
         private void UpdateKinectStatus()
@@ -177,7 +264,7 @@ namespace Vision.GUI
                     // ignored
                 }
             }
-             
+
             imageControl.Source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, format, null, image.Pixels, image.Stride);
 
             ++_framesShowed;

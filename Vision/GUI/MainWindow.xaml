@@ -16,6 +16,7 @@
                 <MenuItem Header="Kinect">
                     <MenuItem Name="KinectStatusMenuItem" Header="KinectStatus" Click="KinectStatusMenuItemClickEventHandler" Loaded="KinectStatusMenuItemLoadedEventHandler" />
                 </MenuItem>
+                <MenuItem Header="Servo" Loaded="ServoMenuItemLoadedEventHandler" />
             </MenuItem>
         </Menu>
         <Grid>
