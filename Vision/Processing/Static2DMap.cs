@@ -113,6 +113,7 @@ namespace Vision.Processing
         {
             MapImageUpdated?.Invoke(this, new Image
             {
+                ImageType = ImageType.Map,
                 Width = width,
                 Height = height,
                 DpiX = 96.0,

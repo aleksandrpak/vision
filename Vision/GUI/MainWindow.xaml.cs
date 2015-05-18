@@ -77,6 +77,7 @@ namespace Vision.GUI
                 using (var stream = new FileStream("Data/colorImage.dat", FileMode.Open))
                 {
                     var image = (Image)formatter.Deserialize(stream);
+                    image.ImageType = ImageType.Color;
                     ImageUpdatedEventHandler(null, image);
                     var sensor = new NyARSensor(new NyARIntSize(image.Width, image.Height));
                     sensor.update(image);
@@ -84,7 +85,11 @@ namespace Vision.GUI
                 }
 
                 using (var stream = new FileStream("Data/depthImage.dat", FileMode.Open))
-                    ImageUpdatedEventHandler(null, (Image)formatter.Deserialize(stream));
+                {
+                    var image = (Image)formatter.Deserialize(stream);
+                    image.ImageType = ImageType.Depth;
+                    ImageUpdatedEventHandler(null, image);
+                }
 
                 using (var stream = new FileStream("Data/depthData.dat", FileMode.Open))
                     map.Update((ushort[])formatter.Deserialize(stream));
@@ -263,28 +268,37 @@ namespace Vision.GUI
 
         private void ImageUpdatedEventHandler(object sender, Image image)
         {
-            var format = PixelFormats.Bgr32;
+            var format = PixelFormats.Gray8;
             var imageControl = ColorImage;
 
-            switch (image.BitsPerPixel)
+            switch (image.ImageType)
             {
-                case 8:
-                    format = PixelFormats.Gray8;
+                case ImageType.Map:
                     imageControl = MapImage;
                     break;
 
-                case 24:
-                    format = PixelFormats.Bgr24;
+                case ImageType.Depth:
                     imageControl = DepthImage;
                     break;
 
-                case 32:
+                case ImageType.Color:
                     format = PixelFormats.Bgr32;
                     imageControl = ColorImage;
                     break;
             }
 
-            if (format == PixelFormats.Bgr32)
+            switch (image.BitsPerPixel)
+            {
+                case 24:
+                    format = PixelFormats.Bgr24;
+                    break;
+
+                case 32:
+                    format = PixelFormats.Bgr32;
+                    break;
+            }
+
+            if (image.ImageType == ImageType.Color)
                 RecognizeMarkers(_sensor, image.Width, image.Height);
 
             imageControl.Source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, format, null, image.Pixels, image.Stride);

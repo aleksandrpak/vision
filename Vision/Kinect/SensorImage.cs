@@ -58,6 +58,7 @@ namespace Vision.Kinect
 
             DepthImage = new Image
                 {
+                    ImageType = ImageType.Depth,
                     Width = Sensor.DepthFrameWidth,
                     Height = depthImageHeight,
                     DpiX = 96.0,
@@ -107,6 +108,7 @@ namespace Vision.Kinect
 
             ColorImage = new Image
                 {
+                    ImageType = ImageType.Color,
                     Width = width,
                     Height = Sensor.ColorFrameHeight,
                     DpiX = 96.0,

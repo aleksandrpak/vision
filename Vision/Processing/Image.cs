@@ -7,6 +7,8 @@ namespace Vision.Processing
     [Serializable]
     public struct Image : INyARRgbRaster, INyARRgbPixelDriver // TODO: Make immutable
     {
+        public ImageType ImageType { get; set; }
+
         public int Width { get; set; }
 
         public int Height { get; set; }
