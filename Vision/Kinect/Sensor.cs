@@ -24,6 +24,8 @@ namespace Vision.Kinect
 
         public const int ColorFrameWidth = 1920;
 
+        public const int MergedColorFrameWidth = (int)((ColorFrameWidth / 707.0) * 513.0);
+
         public const int ColorFrameHeight = 1080;
 
         private readonly KinectSensor _sensor;
@@ -94,7 +96,7 @@ namespace Vision.Kinect
             }
         }
 
-        public int CurrentColorWidth => MergeColorAndDepth ? (int)((ColorFrameWidth / 707.0) * 513.0) : ColorFrameWidth;
+        public int CurrentColorWidth => MergeColorAndDepth ? MergedColorFrameWidth : ColorFrameWidth;
 
         // TODO: Allow to configure merge parameters
         // Merge Point 
@@ -118,7 +120,7 @@ namespace Vision.Kinect
 
                 using (var frame = reference.DepthFrameReference.AcquireFrame())
                     image.LoadDepthFrame(frame, _depthData, _depthImageSubscribers > 0, _depthImageBytes, CurrentDepthHeight);
-                
+
                 if (image.ColorImage != null)
                 {
                     update(image.ColorImage.Value);

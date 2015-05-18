@@ -4,6 +4,7 @@ using jp.nyatla.nyartoolkit.cs.core;
 
 namespace Vision.Processing
 {
+    [Serializable]
     public struct Image : INyARRgbRaster, INyARRgbPixelDriver // TODO: Make immutable
     {
         public int Width { get; set; }

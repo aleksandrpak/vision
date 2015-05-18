@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
+using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using jp.nyatla.nyartoolkit.cs.core;
 using jp.nyatla.nyartoolkit.cs.markersystem;
 using Vision.Kinect;
 using Vision.Processing;
@@ -56,25 +58,42 @@ namespace Vision.GUI
 
         private void InitializeSensor()
         {
+            var map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.MaxDepth);
+            map.MapImageUpdated += ImageUpdatedEventHandler;
+
+            _markerSystem = new NyARMarkerSystem(new NyARMarkerSystemConfig(Sensor.MergedColorFrameWidth, Sensor.ColorFrameHeight));
+            _markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80));
+
+            UpdateImageVisibility();
+
             try
             {
                 _sensor = new Sensor();
             }
             catch (Exception exception)
             {
-                MessageBox.Show(this, exception.Message, exception.GetType().Name, MessageBoxButton.OK, MessageBoxImage.Error);
+                var formatter = new BinaryFormatter();
+
+                using (var stream = new FileStream("Data/colorImage.dat", FileMode.Open))
+                {
+                    var image = (Image)formatter.Deserialize(stream);
+                    ImageUpdatedEventHandler(null, image);
+                    var sensor = new NyARSensor(new NyARIntSize(image.Width, image.Height));
+                    sensor.update(image);
+                    RecognizeMarkers(sensor, image.Width, image.Height);
+                }
+
+                using (var stream = new FileStream("Data/depthImage.dat", FileMode.Open))
+                    ImageUpdatedEventHandler(null, (Image)formatter.Deserialize(stream));
+
+                using (var stream = new FileStream("Data/depthData.dat", FileMode.Open))
+                    map.Update((ushort[])formatter.Deserialize(stream));
+
+                MessageBox.Show(this, $"Using stored images.\r\n{exception.Message}", exception.GetType().Name, MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            var map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.MaxDepth);
             _sensor.DepthDataReceived += (sender, data) => map.Update(data);
-
-            map.MapImageUpdated += ImageUpdatedEventHandler;
-
-            _markerSystem = new NyARMarkerSystem(new NyARMarkerSystemConfig(_sensor.CurrentColorWidth, Sensor.ColorFrameHeight));
-            _markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80));
-
-            UpdateImageVisibility();
         }
 
         private void KinectStatusMenuItemClickEventHandler(object sender, RoutedEventArgs e)
@@ -208,6 +227,40 @@ namespace Vision.GUI
         //    Console.WriteLine("Margin: {0}. Depth: {1}, Color: {2}", DepthImage.Margin, new Size(DepthImage.ActualWidth, DepthImage.ActualHeight), new Size(ColorImage.ActualWidth, ColorImage.ActualHeight));
         //}
 
+        private void RecognizeMarkers(NyARSensor sensor, int width, int height)
+        {
+            try
+            {
+                MarkerImage.Visibility = Visibility.Hidden;
+
+                _markerSystem.update(sensor);
+                if (_markerSystem.isExistMarker(_markers[0]))
+                {
+                    var points = _markerSystem.getMarkerVertex2D(_markers[0]);
+                    var visual = new DrawingVisual();
+                    var context = visual.RenderOpen();
+                    for (var i = 0; i < points.Length; i++)
+                    {
+                        var a = points[i];
+                        var b = i == points.Length - 1 ? points[0] : points[i + 1];
+
+                        context.DrawLine(new Pen(Brushes.DarkRed, 3), new Point(a.x, a.y), new Point(b.x, b.y));
+                    }
+
+                    context.Close();
+
+                    var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+                    bitmap.Render(visual);
+                    MarkerImage.Source = bitmap;
+                    MarkerImage.Visibility = Visibility.Visible;
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
         private void ImageUpdatedEventHandler(object sender, Image image)
         {
             var format = PixelFormats.Bgr32;
@@ -232,38 +285,7 @@ namespace Vision.GUI
             }
 
             if (format == PixelFormats.Bgr32)
-            {
-                try
-                {
-                    MarkerImage.Visibility = Visibility.Hidden;
-
-                    _markerSystem.update(_sensor);
-                    if (_markerSystem.isExistMarker(_markers[0]))
-                    {
-                        var points = _markerSystem.getMarkerVertex2D(_markers[0]);
-                        var visual = new DrawingVisual();
-                        var context = visual.RenderOpen();
-                        for (var i = 0; i < points.Length; i++)
-                        {
-                            var a = points[i];
-                            var b = i == points.Length - 1 ? points[0] : points[i + 1];
-
-                            context.DrawLine(new Pen(Brushes.DarkRed, 3), new Point(a.x, a.y), new Point(b.x, b.y));
-                        }
-
-                        context.Close();
-
-                        var bitmap = new RenderTargetBitmap(image.Width, image.Height, 96, 96, PixelFormats.Pbgra32);
-                        bitmap.Render(visual);
-                        MarkerImage.Source = bitmap;
-                        MarkerImage.Visibility = Visibility.Visible;
-                    }
-                }
-                catch
-                {
-                    // ignored
-                }
-            }
+                RecognizeMarkers(_sensor, image.Width, image.Height);
 
             imageControl.Source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, format, null, image.Pixels, image.Stride);
 
