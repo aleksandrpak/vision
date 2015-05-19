@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using jp.nyatla.nyartoolkit.cs.core;
 using jp.nyatla.nyartoolkit.cs.markersystem;
 using Vision.Kinect;
@@ -64,11 +65,12 @@ namespace Vision.GUI
             _markerSystem = new NyARMarkerSystem(new NyARMarkerSystemConfig(Sensor.MergedColorFrameWidth, Sensor.ColorFrameHeight));
             _markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80));
 
-            UpdateImageVisibility();
-
             try
             {
                 _sensor = new Sensor();
+                _sensor.DepthDataReceived += (sender, data) => map.Update(data);
+
+                UpdateImageVisibility();
             }
             catch (Exception exception)
             {
@@ -94,11 +96,10 @@ namespace Vision.GUI
                 using (var stream = new FileStream("Data/depthData.dat", FileMode.Open))
                     map.Update((ushort[])formatter.Deserialize(stream));
 
-                MessageBox.Show(this, $"Using stored images.\r\n{exception.Message}", exception.GetType().Name, MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
+                UpdateImageVisibility();
 
-            _sensor.DepthDataReceived += (sender, data) => map.Update(data);
+                MessageBox.Show(this, $"Using stored images.\r\n{exception.Message}", exception.GetType().Name, MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void KinectStatusMenuItemClickEventHandler(object sender, RoutedEventArgs e)
@@ -232,33 +233,45 @@ namespace Vision.GUI
         //    Console.WriteLine("Margin: {0}. Depth: {1}, Color: {2}", DepthImage.Margin, new Size(DepthImage.ActualWidth, DepthImage.ActualHeight), new Size(ColorImage.ActualWidth, ColorImage.ActualHeight));
         //}
 
-        private void RecognizeMarkers(NyARSensor sensor, int width, int height)
+        private async void RecognizeMarkers(NyARSensor sensor, int width, int height)
         {
             try
             {
-                MarkerImage.Visibility = Visibility.Hidden;
-
-                _markerSystem.update(sensor);
-                if (_markerSystem.isExistMarker(_markers[0]))
+                await Task.Run(async () =>
                 {
-                    var points = _markerSystem.getMarkerVertex2D(_markers[0]);
-                    var visual = new DrawingVisual();
-                    var context = visual.RenderOpen();
-                    for (var i = 0; i < points.Length; i++)
+                    _markerSystem.update(sensor);
+                    if (_markerSystem.isExistMarker(_markers[0]))
                     {
-                        var a = points[i];
-                        var b = i == points.Length - 1 ? points[0] : points[i + 1];
+                        var points = _markerSystem.getMarkerVertex2D(_markers[0]);
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            var visual = new DrawingVisual();
+                            var context = visual.RenderOpen();
+                            for (var i = 0; i < points.Length; i++)
+                            {
+                                var a = points[i];
+                                var b = i == points.Length - 1 ? points[0] : points[i + 1];
 
-                        context.DrawLine(new Pen(Brushes.DarkRed, 3), new Point(a.x, a.y), new Point(b.x, b.y));
+                                context.DrawLine(new Pen(Brushes.DarkRed, 3), new Point(a.x, a.y), new Point(b.x, b.y));
+                            }
+
+                            context.Close();
+
+                            var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+                            bitmap.Render(visual);
+
+                            MarkerImage.Source = bitmap;
+                            MarkerImage.Visibility = Visibility.Visible;
+                        }, DispatcherPriority.Send);
                     }
-
-                    context.Close();
-
-                    var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
-                    bitmap.Render(visual);
-                    MarkerImage.Source = bitmap;
-                    MarkerImage.Visibility = Visibility.Visible;
-                }
+                    else
+                    {
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            MarkerImage.Visibility = Visibility.Hidden;
+                        }, DispatcherPriority.Send);
+                    }
+                });
             }
             catch
             {
