@@ -38,28 +38,34 @@ namespace Vision.Processing
         {
             for (var j = 0; j < Width; ++j)
             {
-                var minDepth = 0;
-                for (var i = Height / 2 - 50; i < Height / 2 + 50; ++i) // TODO: Use height of robot
-                {
-                    var depth = -Math.Min(MaxDepth, data[i * Width + j]);
-                    if (depth < minDepth)
-                        minDepth = depth;
-                }
-
                 var angle = NormalizeAngle(_currentAngle - ((double)j / Width * HorizontalAngle));
-                var screenAngle = (j - Width / 2) / (double)Width * 70.0;
-
-                minDepth = -minDepth;
-                minDepth = (int)(minDepth / Math.Sin((90 - screenAngle) * Math.PI / 180.0));
-
                 var index = (int)(angle / 360.0 * (_map.Length - 1));
+                var horizontalScreenAngle = (j - Width / 2) / (double)Width * 70.0;
 
                 if (_map[index] == null)
                     _map[index] = new List<Tuple<ushort, byte, byte>>();
                 else
                     _map[index].Clear();
 
-                _map[index].Add(new Tuple<ushort, byte, byte>((ushort)minDepth, 255, 0));
+                for (var i = 0; i < Height; ++i)
+                {
+                    var depth = Math.Min(MaxDepth, data[i * Width + j]);
+                    if (depth == 0)
+                        continue;
+
+                    var verticalScreenAngle = Math.Abs((i - Height / 2) / (double)Height * 60.0);
+                    var height = (ushort)(Math.Sin((verticalScreenAngle) * Math.PI / 180.0) * depth / Math.Sin((90 - verticalScreenAngle) * Math.PI / 180.0));
+
+                    if (height > 2000)
+                        continue;
+
+                    var red = (byte)(((2000 - height) / 2000.0) * 255.0);
+                    var green = (byte)(((height) / 2000.0) * 255.0);
+
+                    depth = (ushort)(depth / Math.Sin((90 - horizontalScreenAngle) * Math.PI / 180.0));
+
+                    _map[index].Add(new Tuple<ushort, byte, byte>(depth, green, red));
+                }
             }
 
             if (MapImageUpdated == null)
@@ -94,38 +100,37 @@ namespace Vision.Processing
 
         private static void SetPixels(IList<byte> pixels, int width, int x, int y, byte green, byte red)
         {
-            if (y - 1 > 0)
-                SetPixelsRow(pixels, width, x, y - 1, green, red);
+            //if (y - 1 > 0)
+            //    SetPixelsRow(pixels, width, x, y - 1, green, red);
 
             SetPixelsRow(pixels, width, x, y, green, red);
 
-            if ((y + 1) < width)
-                SetPixelsRow(pixels, width, x, y + 1, green, red);
+            //if ((y + 1) < width)
+            //    SetPixelsRow(pixels, width, x, y + 1, green, red);
         }
 
         private static void SetPixelsRow(IList<byte> pixels, int width, int x, int y, byte green, byte red)
         {
-            // b g r
-            var firstPixel = y * width * 3 + ((x - 1) * 3);
-            if (firstPixel > 0)
-            {
-                pixels[firstPixel] = 0;
-                pixels[firstPixel + 1] = green;
-                pixels[firstPixel + 2] = red;
-            }
+            //var firstPixel = y * width * 3 + ((x - 1) * 3);
+            //if (firstPixel > 0)
+            //{
+            //    pixels[firstPixel] = 0;
+            //    pixels[firstPixel + 1] = green;
+            //    pixels[firstPixel + 2] = red;
+            //}
 
             var secondPixel = y * width * 3 + (x * 3);
             pixels[secondPixel] = 0;
             pixels[secondPixel + 1] = green;
             pixels[secondPixel + 2] = red;
 
-            var thirdPixel = y * width * 3 + ((x + 1) * 3);
-            if (thirdPixel < pixels.Count)
-            {
-                pixels[thirdPixel] = 0;
-                pixels[thirdPixel + 1] = green;
-                pixels[thirdPixel + 2] = red;
-            }
+            //var thirdPixel = y * width * 3 + ((x + 1) * 3);
+            //if (thirdPixel < pixels.Count)
+            //{
+            //    pixels[thirdPixel] = 0;
+            //    pixels[thirdPixel + 1] = green;
+            //    pixels[thirdPixel + 2] = red;
+            //}
         }
 
         private static double NormalizeAngle(double angle)

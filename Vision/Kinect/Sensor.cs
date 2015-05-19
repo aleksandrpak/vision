@@ -16,7 +16,7 @@ namespace Vision.Kinect
 
         public const double DepthFrameHorizontalAngle = 70;
 
-        public const double DepthFrameVerticalAngle = 70;
+        public const double DepthFrameVerticalAngle = 60;
 
         public const int DepthFrameWidth = 512;
 
