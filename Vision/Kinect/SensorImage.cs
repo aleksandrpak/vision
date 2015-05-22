@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using System.Windows.Media.Imaging;
 using Microsoft.Kinect;
 using Vision.Processing;
 
@@ -20,103 +21,98 @@ namespace Vision.Kinect
 
         public ushort[] DepthData { get; private set; }
 
-        public Image? DepthImage { get; private set; }
-
         public Image? ColorImage { get; private set; }
 
-        internal void LoadDepthFrame(DepthFrame frame, ushort[] depthData, bool generateDepthImage, byte[] depthImageBytes, int depthImageHeight)
+        internal void LoadDepthFrame(DepthFrame frame, ushort[] depthData, ushort[] depthDataCropped, ushort[] depthDataFlipped, bool generateDepthImage, WriteableBitmap image, int depthImageHeight)
         {
             if (frame == null)
                 return;
 
-            DepthData = depthData;
-            frame.CopyFrameDataToArray(DepthData);
+            DepthData = depthDataFlipped;
+            frame.CopyFrameDataToArray(depthData);
+
+            depthData.CropImage(depthDataCropped, Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameWidth, depthImageHeight);
+            depthDataCropped.FlipImageHorizontally(depthDataFlipped, Sensor.DepthFrameWidth);
 
             if (!generateDepthImage)
                 return;
-            
-            var skipCount = (Sensor.DepthFrameHeight - depthImageHeight) / 2;
-            var index = 0;
 
-            for (var i = skipCount + 1; i < Sensor.DepthFrameHeight - skipCount; ++i)
+            unsafe
             {
-                for (var j = 0; j < Sensor.DepthFrameWidth; ++j)
+                using (var context = image.GetBitmapContext(ReadWriteMode.ReadWrite))
                 {
-                    var offset = ((i * Sensor.DepthFrameWidth) + (Sensor.DepthFrameWidth - j));
-                    var depth = Math.Min(DepthData[offset], Sensor.MaxDepth);
-                    var percent = (double)depth / Sensor.MaxDepth;
+                    var pixelWidth = context.Width;
 
-                    var blueIntensity = percent > 0.5 ? (percent - 0.5) * 2 : 0;
-                    var greenIntensity = percent > 0.5 ? 1 - percent : percent * 2;
-                    var redIntensity = Math.Max(0, 1 - percent * 2);
+                    for (var i = 0; i < depthImageHeight; ++i)
+                    {
+                        for (var j = 0; j < Sensor.DepthFrameWidth; ++j)
+                        {
+                            var depth = Math.Min(DepthData[i * Sensor.DepthFrameWidth + j], Sensor.MaxDepth);
+                            var percent = (double)depth / Sensor.MaxDepth;
 
-                    depthImageBytes[index++] = (byte)(depth == 0 ? 0 : 255 * blueIntensity); // Blue
-                    depthImageBytes[index++] = (byte)(depth == 0 ? 0 : 255 * greenIntensity); // Green
-                    depthImageBytes[index++] = (byte)(depth == 0 ? 0 : 255 * redIntensity); // Red
+                            var blueIntensity = percent > 0.5 ? (percent - 0.5) * 2 : 0;
+                            var greenIntensity = percent > 0.5 ? 1 - percent : percent * 2;
+                            var redIntensity = Math.Max(0, 1 - percent * 2);
+
+                            context.Pixels[i * pixelWidth + j] = -16777216 |
+                                                               (int)(depth == 0 ? 0 : 255 * redIntensity) << 16 |
+                                                               (int)(depth == 0 ? 0 : 255 * greenIntensity) << 8 |
+                                                               (int)(depth == 0 ? 0 : 255 * blueIntensity);
+                        }
+                    }
                 }
             }
-
-            DepthImage = new Image
-                {
-                    ImageType = ImageType.Depth,
-                    Width = Sensor.DepthFrameWidth,
-                    Height = depthImageHeight,
-                    DpiX = 96.0,
-                    DpiY = 96.0,
-                    Pixels = depthImageBytes,
-                    Stride = Sensor.DepthFrameWidth * 3,
-                    BitsPerPixel = 24
-                };
         }
 
-        internal void LoadColorFrame(ColorFrame frame, byte[] pixels, byte[] newPixels, int currentWidth, bool mergeColorAndDepth)
+        internal void LoadColorFrame(ColorFrame frame, byte[] pixels, byte[] pixelsCropped, byte[] pixelsFlipped, WriteableBitmap image, int currentWidth)
         {
             if (frame == null)
                 return;
-
-            var width = Sensor.ColorFrameWidth;
 
             if (frame.RawColorImageFormat == ColorImageFormat.Bgra)
                 frame.CopyRawFrameDataToArray(pixels);
             else
                 frame.CopyConvertedFrameDataToArray(pixels, ColorImageFormat.Bgra);
 
-            if (mergeColorAndDepth)
+            pixels.CropImage(pixelsCropped, Sensor.ColorFrameWidth, Sensor.ColorFrameHeight, currentWidth, Sensor.ColorFrameHeight, 4);
+            pixelsCropped.FlipImageHorizontally(pixelsFlipped, currentWidth, 4);
+
+            // TODO: Allow to configure merge parameters
+            // Merge Point 
+            // Margin: 98,98,98,98. Depth: 513, 424.828125, Color: 707, 397.6875
+
+            unsafe
             {
-                // TODO: Allow to configure merge parameters
-                // Merge Point 
-                // Margin: 98,98,98,98. Depth: 513, 424.828125, Color: 707, 397.6875
-                width = currentWidth;
-
-                var index = 0;
-                var skipCount = (Sensor.ColorFrameWidth - width) / 2;
-
-                for (var i = 0; i < Sensor.ColorFrameHeight; ++i)
+                using (var context = image.GetBitmapContext(ReadWriteMode.ReadWrite))
                 {
-                    for (var j = 0; j < width; ++j)
+                    var pixelWidth = context.Width;
+
+                    for (var i = 0; i < Sensor.ColorFrameHeight; ++i)
                     {
-                        var offset = ((i * Sensor.ColorFrameWidth) + (Sensor.ColorFrameWidth - skipCount - j)) * 4;
-                        newPixels[index++] = pixels[offset];
-                        newPixels[index++] = pixels[offset + 1];
-                        newPixels[index++] = pixels[offset + 2];
-                        newPixels[index++] = pixels[offset + 3];
+                        for (var j = 0; j < currentWidth; ++j)
+                        {
+                            var offset = i * currentWidth * 4 + j * 4;
+
+                            context.Pixels[i * pixelWidth + j] = -16777216 |
+                                                               pixelsFlipped[offset + 2] << 16 |
+                                                               pixelsFlipped[offset + 1] << 8 |
+                                                               pixelsFlipped[offset];
+                        }
                     }
                 }
-
-                pixels = newPixels;
             }
 
             ColorImage = new Image
-                {
-                    ImageType = ImageType.Color,
-                    Width = width,
-                    Height = Sensor.ColorFrameHeight,
-                    DpiX = 96.0,
-                    DpiY = 96.0,
-                    Pixels = pixels,
-                    Stride = width * 4,
-                    BitsPerPixel = 32
-                };
+            {
+                ImageType = ImageType.Color,
+                Width = currentWidth,
+                Height = Sensor.ColorFrameHeight,
+                DpiX = 96.0,
+                DpiY = 96.0,
+                Pixels = pixelsFlipped,
+                Stride = currentWidth * 4,
+                BitsPerPixel = 32
+            };
         }
 
         void IDisposable.Dispose()

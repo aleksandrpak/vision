@@ -1,30 +1,37 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace Vision.Processing
 {
     public sealed class Static2DMap
     {
-        private readonly List<Tuple<ushort, byte, byte>>[] _map;
+        private readonly List<DepthData>[] _map;
+
+        private readonly WriteableBitmap _bitmap;
 
         private double _currentAngle;
 
-        public Static2DMap(int width, int height, double horizontalAngle, ushort maxDepth)
+        private ManualResetEventSlim _servoEvent;
+
+        public Static2DMap(int width, int height, double horizontalAngle, double verticalAngle, ushort maxDepth)
         {
             Width = width;
             Height = height;
             HorizontalAngle = horizontalAngle;
+            VerticalAngle = verticalAngle;
             MaxDepth = maxDepth;
 
-            _map = new List<Tuple<ushort, byte, byte>>[(int)(360.0 / (HorizontalAngle / Width))];
+            _bitmap = BitmapFactory.New(maxDepth / 5, maxDepth / 5);
 
-            _currentAngle = 0;
+            _map = new List<DepthData>[(int)(360.0 / (HorizontalAngle / Width))];
+
+            _currentAngle = 90;
         }
 
-        public void Rotate(double angle)
-        {
-            _currentAngle += angle;
-        }
+        public ImageSource Image => _bitmap;
 
         public int Width { get; }
 
@@ -32,18 +39,33 @@ namespace Vision.Processing
 
         public double HorizontalAngle { get; }
 
+        public double VerticalAngle { get; }
+
         public ushort MaxDepth { get; }
+
+        public void SetAngle(double angle)
+        {
+            _currentAngle = angle;
+        }
+
+        public void ConnectServo(ManualResetEventSlim servoEvent)
+        {
+            _servoEvent = servoEvent;
+        }
 
         public void Update(ushort[] data)
         {
+            if (_servoEvent != null && _servoEvent.IsSet)
+                return;
+
             for (var j = 0; j < Width; ++j)
             {
-                var angle = NormalizeAngle(_currentAngle - ((double)j / Width * HorizontalAngle));
+                var angle = NormalizeAngle(_currentAngle - 90 - ((double)j / Width * HorizontalAngle));
                 var index = (int)(angle / 360.0 * (_map.Length - 1));
-                var horizontalScreenAngle = (j - Width / 2) / (double)Width * 70.0;
+                var horizontalScreenAngle = (j - Width / 2) / (double)Width * HorizontalAngle;
 
                 if (_map[index] == null)
-                    _map[index] = new List<Tuple<ushort, byte, byte>>();
+                    _map[index] = new List<DepthData>();
                 else
                     _map[index].Clear();
 
@@ -53,7 +75,7 @@ namespace Vision.Processing
                     if (depth == 0)
                         continue;
 
-                    var verticalScreenAngle = Math.Abs((i - Height / 2) / (double)Height * 60.0);
+                    var verticalScreenAngle = Math.Abs((i - Height / 2) / (double)Height * VerticalAngle);
                     var height = (ushort)(Math.Sin((verticalScreenAngle) * Math.PI / 180.0) * depth / Math.Sin((90 - verticalScreenAngle) * Math.PI / 180.0));
 
                     if (height > 2000)
@@ -64,73 +86,43 @@ namespace Vision.Processing
 
                     depth = (ushort)(depth / Math.Sin((90 - horizontalScreenAngle) * Math.PI / 180.0));
 
-                    _map[index].Add(new Tuple<ushort, byte, byte>(depth, green, red));
+                    _map[index].Add(new DepthData(depth, green, red));
                 }
             }
-
-            if (MapImageUpdated == null)
-                return;
 
             var width = (double)MaxDepth * 2 / 10;
-            var pixels = new byte[(int)width * (int)width * 3];
 
-            for (var i = 0.0; i < _map.Length; ++i)
+            unsafe
             {
-                var depths = _map[(int)i];
-                if (depths == null)
-                    continue;
-
-                for (var j = 0; j < depths.Count; ++j)
+                using (var context = _bitmap.GetBitmapContext(ReadWriteMode.ReadWrite))
                 {
-                    var item = _map[(int)i][j];
-                    var depth = item.Item1 / 10;
-                    if (depth == 0)
-                        continue;
+                    context.Clear();
+                    var pixelWidth = context.Width;
 
-                    var angle = i / _map.Length * 2 * Math.PI + 2.181661565; // + 125 degrees
-                    var x = (int)((width / 2) + Math.Cos(angle) * depth);
-                    var y = (int)((width / 2) - Math.Sin(angle) * depth);
+                    for (var i = 0.0; i < _map.Length; ++i)
+                    {
+                        var depths = _map[(int)i];
+                        if (depths == null)
+                            continue;
 
-                    SetPixels(pixels, (int)width, x, y, item.Item2, item.Item3);
+                        for (var j = 0; j < depths.Count; ++j)
+                        {
+                            var item = _map[(int)i][j];
+                            var depth = item.Depth / 10;
+                            if (depth == 0)
+                                continue;
+
+                            var angle = i / _map.Length * 2 * Math.PI + 2.181661565; // + 125 degrees
+                            var x = (int)((width / 2) + Math.Cos(angle) * depth);
+                            var y = (int)((width / 2) - Math.Sin(angle) * depth);
+
+                            context.Pixels[y * pixelWidth + x] = -16777216 | item.Red << 16 | item.Green << 8;
+                        }
+                    }
                 }
             }
 
-            RaiseMapImageUpdated(pixels, (int)width, (int)width);
-        }
-
-        private static void SetPixels(IList<byte> pixels, int width, int x, int y, byte green, byte red)
-        {
-            //if (y - 1 > 0)
-            //    SetPixelsRow(pixels, width, x, y - 1, green, red);
-
-            SetPixelsRow(pixels, width, x, y, green, red);
-
-            //if ((y + 1) < width)
-            //    SetPixelsRow(pixels, width, x, y + 1, green, red);
-        }
-
-        private static void SetPixelsRow(IList<byte> pixels, int width, int x, int y, byte green, byte red)
-        {
-            //var firstPixel = y * width * 3 + ((x - 1) * 3);
-            //if (firstPixel > 0)
-            //{
-            //    pixels[firstPixel] = 0;
-            //    pixels[firstPixel + 1] = green;
-            //    pixels[firstPixel + 2] = red;
-            //}
-
-            var secondPixel = y * width * 3 + (x * 3);
-            pixels[secondPixel] = 0;
-            pixels[secondPixel + 1] = green;
-            pixels[secondPixel + 2] = red;
-
-            //var thirdPixel = y * width * 3 + ((x + 1) * 3);
-            //if (thirdPixel < pixels.Count)
-            //{
-            //    pixels[thirdPixel] = 0;
-            //    pixels[thirdPixel + 1] = green;
-            //    pixels[thirdPixel + 2] = red;
-            //}
+            _servoEvent?.Set();
         }
 
         private static double NormalizeAngle(double angle)
@@ -141,21 +133,18 @@ namespace Vision.Processing
             return angle;
         }
 
-        private void RaiseMapImageUpdated(byte[] pixels, int width, int height)
+        private struct DepthData
         {
-            MapImageUpdated?.Invoke(this, new Image
+            public DepthData(ushort depth, byte red, byte green)
             {
-                ImageType = ImageType.Map,
-                Width = width,
-                Height = height,
-                DpiX = 96.0,
-                DpiY = 96.0,
-                Pixels = pixels,
-                Stride = width * 3,
-                BitsPerPixel = 24
-            });
-        }
+                Depth = depth;
+                Red = red;
+                Green = green;
+            }
 
-        public event EventHandler<Image> MapImageUpdated;
+            public ushort Depth { get; }
+            public byte Red { get; }
+            public byte Green { get; }
+        }
     }
 }

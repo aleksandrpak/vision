@@ -1,10 +1,12 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using jp.nyatla.nyartoolkit.cs.core;
 using jp.nyatla.nyartoolkit.cs.markersystem;
 using Microsoft.Kinect;
-using Vision.Processing;
 
 namespace Vision.Kinect
 {
@@ -36,23 +38,33 @@ namespace Vision.Kinect
 
         private readonly ushort[] _depthData;
 
-        private byte[] _depthImageBytes;
+        private ushort[] _depthDataCropped;
 
-        private readonly byte[] _colorImageData;
+        private ushort[] _depthDataFlipped;
+        
+        private WriteableBitmap _depthImage;
 
-        private byte[] _colorImageBytes;
+        private readonly byte[] _colorData;
 
-        private EventHandler<Image> _colorImageUpdated;
+        private byte[] _colorDataCropped;
 
-        private EventHandler<Image> _depthImageUpdated;
+        private byte[] _colorDataFlipped;
+
+        private WriteableBitmap _colorImage;
+
+        private EventHandler<EventArgs> _colorImageUpdated;
 
         private EventHandler<ushort[]> _depthDataReceived;
 
         private int _colorImageSubscribers;
 
-        private int _depthImageSubscribers;
-
         private int _depthDataSubscribers;
+
+        private readonly Stopwatch _tickTimer;
+
+        private long _colorTick;
+
+        private long _depthTick;
 
         #endregion
 
@@ -61,12 +73,20 @@ namespace Vision.Kinect
         {
             _sensor = KinectSensor.GetDefault();
 
+            GenerateDepthImage = true;
             MergeColorAndDepth = true;
-            _depthData = new ushort[DepthFrameWidth * DepthFrameHeight];
-            _depthImageBytes = new byte[DepthFrameWidth * CurrentDepthHeight * 3];
 
-            _colorImageData = new byte[ColorFrameWidth * ColorFrameHeight * 4];
-            _colorImageBytes = new byte[CurrentColorWidth * ColorFrameHeight * 4];
+            _depthData = new ushort[DepthFrameWidth * DepthFrameHeight];
+            _depthDataCropped = new ushort[DepthFrameWidth * CurrentDepthHeight];
+            _depthDataFlipped = new ushort[DepthFrameWidth * CurrentDepthHeight];
+            _depthImage = BitmapFactory.New(DepthFrameWidth, CurrentDepthHeight);
+
+            _colorData = new byte[ColorFrameWidth * ColorFrameHeight * 4];
+            _colorDataCropped = new byte[CurrentColorWidth * ColorFrameHeight * 4];
+            _colorDataFlipped = new byte[CurrentColorWidth * ColorFrameHeight * 4];
+            _colorImage = BitmapFactory.New(CurrentColorWidth, ColorFrameHeight);
+
+            _tickTimer = Stopwatch.StartNew();
 
             if (_sensor == null)
                 throw new InvalidOperationException("Failed to initialize Kinect sensor.");
@@ -82,6 +102,10 @@ namespace Vision.Kinect
 
         public bool IsConnected => _sensor.IsOpen && _sensor.IsAvailable;
 
+        public ImageSource DepthImage => _depthImage;
+
+        public ImageSource ColorImage => _colorImage;
+
         public bool MergeColorAndDepth
         {
             get { return _mergeColorAndDepth; }
@@ -91,10 +115,18 @@ namespace Vision.Kinect
                     return;
 
                 _mergeColorAndDepth = value;
-                _depthImageBytes = new byte[DepthFrameWidth * CurrentDepthHeight * 3];
-                _colorImageBytes = new byte[CurrentColorWidth * ColorFrameHeight * 4];
+
+                _depthDataCropped = new ushort[DepthFrameWidth * CurrentDepthHeight];
+                _depthDataFlipped = new ushort[DepthFrameWidth * CurrentDepthHeight];
+                _depthImage = BitmapFactory.New(DepthFrameWidth, CurrentDepthHeight);
+
+                _colorDataCropped = new byte[CurrentColorWidth * ColorFrameHeight * 4];
+                _colorDataFlipped = new byte[CurrentColorWidth * ColorFrameHeight * 4];
+                _colorImage = BitmapFactory.New(CurrentColorWidth, ColorFrameHeight);
             }
         }
+
+        public bool GenerateDepthImage { get; set; }
 
         public int CurrentColorWidth => MergeColorAndDepth ? MergedColorFrameWidth : ColorFrameWidth;
 
@@ -102,7 +134,7 @@ namespace Vision.Kinect
         // Merge Point 
         // Margin: 98,98,98,98. Depth: 513, 424.828125, Color: 707, 397.6875
         public int CurrentDepthHeight => MergeColorAndDepth ? 397 : DepthFrameHeight;
-
+        
         private void MultiSourceFrameArrivedEventHandler(object sender, MultiSourceFrameArrivedEventArgs args)
         {
             using (var image = new SensorImage(this))
@@ -111,27 +143,32 @@ namespace Vision.Kinect
                     return;
 
                 var reference = args.FrameReference.AcquireFrame();
+                var currentTick = _tickTimer.ElapsedMilliseconds / 100;
 
-                if (_colorImageSubscribers > 0)
+                if (_colorImageSubscribers > 0 && _colorTick != currentTick)
                 {
                     using (var frame = reference.ColorFrameReference.AcquireFrame())
-                        image.LoadColorFrame(frame, _colorImageData, _colorImageBytes, CurrentColorWidth, MergeColorAndDepth);
+                        image.LoadColorFrame(frame, _colorData, _colorDataCropped, _colorDataFlipped, _colorImage, CurrentColorWidth);
                 }
 
-                using (var frame = reference.DepthFrameReference.AcquireFrame())
-                    image.LoadDepthFrame(frame, _depthData, _depthImageSubscribers > 0, _depthImageBytes, CurrentDepthHeight);
+                if (_depthTick != currentTick)
+                {
+                    using (var frame = reference.DepthFrameReference.AcquireFrame())
+                        image.LoadDepthFrame(frame, _depthData, _depthDataCropped, _depthDataFlipped, GenerateDepthImage, _depthImage, CurrentDepthHeight);
+                }
+
+                if (_depthDataSubscribers > 0 && image.DepthData != null)
+                {
+                    RaiseDepthDataReceived(image.DepthData);
+                    _depthTick = currentTick;
+                }
 
                 if (image.ColorImage != null)
                 {
                     update(image.ColorImage.Value);
-                    RaiseColorImageUpdated(image.ColorImage.Value);
+                    RaiseColorImageUpdated();
+                    _colorTick = currentTick;
                 }
-
-                if (_depthDataSubscribers > 0 && image.DepthData != null)
-                    RaiseDepthDataReceived(image.DepthData);
-
-                if (image.DepthImage != null)
-                    RaiseDepthImageUpdated(image.DepthImage.Value);
             }
         }
 
@@ -144,7 +181,7 @@ namespace Vision.Kinect
             if (_colorImageSubscribers > 0)
                 types |= FrameSourceTypes.Color;
 
-            if (_depthImageSubscribers + _depthDataSubscribers > 0)
+            if (GenerateDepthImage || _depthDataSubscribers > 0)
                 types |= FrameSourceTypes.Depth;
 
             DestroyReader(types);
@@ -203,14 +240,9 @@ namespace Vision.Kinect
             }
         }
 
-        private void RaiseColorImageUpdated(Image image)
+        private void RaiseColorImageUpdated()
         {
-            _colorImageUpdated?.Invoke(this, image);
-        }
-
-        private void RaiseDepthImageUpdated(Image image)
-        {
-            _depthImageUpdated?.Invoke(this, image);
+            _colorImageUpdated?.Invoke(this, EventArgs.Empty);
         }
 
         private void RaiseDepthDataReceived(ushort[] data)
@@ -218,7 +250,7 @@ namespace Vision.Kinect
             _depthDataReceived?.Invoke(this, data);
         }
 
-        public event EventHandler<Image> ColorImageUpdated
+        public event EventHandler<EventArgs> ColorImageUpdated
         {
             add
             {
@@ -229,19 +261,7 @@ namespace Vision.Kinect
                 RemoveEvent(ref _colorImageUpdated, value, ref _colorImageSubscribers);
             }
         }
-
-        public event EventHandler<Image> DepthImageUpdated
-        {
-            add
-            {
-                AddEvent(ref _depthImageUpdated, value, ref _depthImageSubscribers);
-            }
-            remove
-            {
-                RemoveEvent(ref _depthImageUpdated, value, ref _depthImageSubscribers);
-            }
-        }
-
+        
         public event EventHandler<ushort[]> DepthDataReceived
         {
             add
