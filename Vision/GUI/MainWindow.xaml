@@ -18,6 +18,22 @@
                 </MenuItem>
                 <MenuItem Header="Servo" Loaded="ServoMenuItemLoadedEventHandler" />
             </MenuItem>
+            <MenuItem Header="Servo">
+                <MenuItem Header="Shift">
+                    <MenuItem Header="1°" Click="ShiftDegreeMenuItemClickEventHandler" />
+                    <MenuItem Header="5°" Click="ShiftDegreeMenuItemClickEventHandler" />
+                    <MenuItem Header="10°" Click="ShiftDegreeMenuItemClickEventHandler" />
+                    <MenuItem Header="15°" Click="ShiftDegreeMenuItemClickEventHandler" />
+                </MenuItem>
+                <MenuItem Header="Auto">
+                    <MenuItem Header="Start" Click="ServoAutoStartMenuIteckClickEventHandler" />
+                    <MenuItem Header="Stop" Click="ServoAutoStopMenuIteckClickEventHandler" />
+                </MenuItem>
+                <MenuItem Header="Manual">
+                    <MenuItem Header="Left" Name="ServoManualLeft" Click="ServoManualClickEventHandler" />
+                    <MenuItem Header="Right" Click="ServoManualClickEventHandler" />
+                </MenuItem>
+            </MenuItem>
         </Menu>
         <Grid>
             <Grid.ColumnDefinitions>

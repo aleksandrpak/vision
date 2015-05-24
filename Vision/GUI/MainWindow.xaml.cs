@@ -11,6 +11,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using jp.nyatla.nyartoolkit.cs.core;
 using jp.nyatla.nyartoolkit.cs.markersystem;
+using Servo;
 using Vision.Kinect;
 using Vision.Processing;
 using Image = Vision.Processing.Image;
@@ -28,19 +29,25 @@ namespace Vision.GUI
 
         private readonly List<int> _markers;
 
-        private SerialPort _servo;
-
         private Static2DMap _map;
 
         private WriteableBitmap _markersImage;
 
+        private readonly Controller _servo;
+
         private readonly ManualResetEventSlim _mapWait;
+
+        private int _shift;
+
+        private bool _isRotating;
 
         public MainWindow()
         {
             _markers = new List<int>();
 
+            _servo = new Controller();
             _mapWait = new ManualResetEventSlim(true);
+            _shift = 5;
 
             InitializeComponent();
 
@@ -54,6 +61,8 @@ namespace Vision.GUI
 
             InitializeSensor();
         }
+
+        #region Kinect
 
         private void InitializeSensor()
         {
@@ -117,162 +126,12 @@ namespace Vision.GUI
             UpdateKinectStatus();
         }
 
-        private void ServoMenuItemLoadedEventHandler(object sender, RoutedEventArgs e)
-        {
-            var servoMenuItem = (MenuItem)sender;
-
-            servoMenuItem.Items.Clear();
-
-            var ports = SerialPort.GetPortNames();
-            if (ports.Length == 0)
-            {
-                servoMenuItem.Items.Add(new MenuItem
-                {
-                    Header = "Empty",
-                    IsEnabled = false
-                });
-            }
-            else
-            {
-                foreach (var port in ports)
-                {
-                    var menuItem = new MenuItem { Header = port };
-                    menuItem.Click += PortMenuClickEventHandler;
-
-                    servoMenuItem.Items.Add(menuItem);
-                }
-            }
-        }
-
-        private void PortMenuClickEventHandler(object sender, RoutedEventArgs routedEventArgs)
-        {
-            var menuItem = (MenuItem)sender;
-            ConnectToServo(menuItem.Header.ToString());
-        }
-
-        private void RotateServo()
-        {
-            Task.Run(() =>
-            {
-                var angle = 90;
-                const int shift = 10;
-                _map.SetAngle(angle);
-
-                var isUp = true;
-                while (true)
-                {
-                    if (isUp)
-                    {
-                        if (angle < 180)
-                        {
-                            angle += shift;
-                        }
-                        else
-                        {
-                            isUp = false;
-                            continue;
-                        }
-                    }
-                    else
-                    {
-                        if (angle > 0)
-                        {
-                            angle -= shift;
-                        }
-                        else
-                        {
-                            isUp = true;
-                            continue;
-                        }
-                    }
-
-                    try
-                    {
-                        _servo.Write(new[] { (byte)angle }, 0, 1);
-                    }
-                    catch
-                    {
-                        return;
-                    }
-
-                    Thread.Sleep(1000);
-                    _map.SetAngle(angle);
-
-                    _mapWait.Reset();
-                    _mapWait.Wait();
-                }
-            });
-        }
-
-        private void ConnectToServo(string port)
-        {
-            try
-            {
-                _servo = new SerialPort(port, 9600);
-                _servo.Open();
-
-                _servo.Write(new[] { (byte)90 }, 0, 1);
-                Thread.Sleep(200);
-
-                _map.ConnectServo(_mapWait);
-                RotateServo();
-            }
-            catch (Exception exception)
-            {
-                MessageBox.Show(this, $"Failed to connect to servo.\r\n{exception.Message}", exception.GetType().Name, MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
         private void UpdateKinectStatus()
         {
             var isOpen = _sensor != null && _sensor.IsConnected;
 
             KinectStatusMenuItem.IsEnabled = !isOpen;
             KinectStatusMenuItem.Header = isOpen ? "Connected" : "Connect";
-        }
-
-        private void RecognizeMarkers(NyARSensor sensor, int width, int height)
-        {
-            if (_markersImage == null || Math.Abs(_markersImage.Width - width) > double.Epsilon || Math.Abs(_markersImage.Height - height) > double.Epsilon)
-            {
-                _markersImage = BitmapFactory.New(width, height);
-                MarkerImage.Source = _markersImage;
-            }
-
-            using (var context = _markersImage.GetBitmapContext(ReadWriteMode.ReadWrite))
-            {
-                try
-                {
-                    context.Clear();
-
-                    var pixelWidth = context.Width;
-                    var pixelHeight = context.Height;
-                    var color = WriteableBitmapExtensions.ConvertColor(Colors.DarkRed);
-
-                    _markerSystem.update(sensor);
-
-                    foreach (var marker in _markers)
-                    {
-                        if (!_markerSystem.isExistMarker(marker))
-                            continue;
-
-                        var points = _markerSystem.getMarkerVertex2D(marker);
-                        _markersImage.Clear();
-
-                        for (var j = 0; j < points.Length; ++j)
-                        {
-                            var a = points[j];
-                            var b = j == points.Length - 1 ? points[0] : points[j + 1];
-
-                            WriteableBitmapExtensions.DrawLineAa(context, pixelWidth, pixelHeight, a.x, a.y, b.x, b.y, color, 2);
-                        }
-                    }
-                }
-                catch
-                {
-                    // ignored
-                }
-            }
         }
 
         private void LoadImage(Image image)
@@ -308,11 +167,6 @@ namespace Vision.GUI
             imageControl.Source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, format, null, image.Pixels, image.Stride);
         }
 
-        private void ColorImageUpdatedEventHandler(object sender, EventArgs args)
-        {
-            RecognizeMarkers(_sensor, _sensor.CurrentColorWidth, Sensor.ColorFrameHeight);
-        }
-
         private void ViewMenuItemCheckedEventHandler(object sender, RoutedEventArgs e)
         {
             UpdateImageVisibility();
@@ -329,7 +183,7 @@ namespace Vision.GUI
 
                 _sensor.GenerateDepthImage = DepthMenuItem.IsChecked;
             }
-            
+
             ColorImage.Visibility = ColorMenuItem.IsChecked ? Visibility.Visible : Visibility.Hidden;
             DepthImage.Visibility = DepthMenuItem.IsChecked ? Visibility.Visible : Visibility.Hidden;
 
@@ -338,5 +192,189 @@ namespace Vision.GUI
             else
                 DepthImage.Opacity = 1;
         }
+
+        #endregion
+
+        #region Markers
+
+        private async void RecognizeMarkers(NyARSensor sensor, int width, int height)
+        {
+            if (sensor == null)
+                return;
+
+            if (_markersImage == null || Math.Abs(_markersImage.Width - width) > double.Epsilon || Math.Abs(_markersImage.Height - height) > double.Epsilon)
+            {
+                _markersImage = BitmapFactory.New(width, height);
+                MarkerImage.Source = _markersImage;
+            }
+
+            if (!Monitor.TryEnter(_markersImage))
+                return;
+
+            using (var context = _markersImage.GetBitmapContext(ReadWriteMode.ReadWrite))
+            {
+                try
+                {
+                    context.Clear();
+
+                    var pixelWidth = context.Width;
+                    var pixelHeight = context.Height;
+                    var color = WriteableBitmapExtensions.ConvertColor(Colors.DarkRed);
+
+                    await Task.Run(() => _markerSystem.update(sensor));
+
+                    foreach (var marker in _markers)
+                    {
+                        if (!_markerSystem.isExistMarker(marker))
+                            continue;
+
+                        var points = _markerSystem.getMarkerVertex2D(marker);
+                        _markersImage.Clear();
+
+                        for (var j = 0; j < points.Length; ++j)
+                        {
+                            var a = points[j];
+                            var b = j == points.Length - 1 ? points[0] : points[j + 1];
+
+                            WriteableBitmapExtensions.DrawLineAa(context, pixelWidth, pixelHeight, a.x, a.y, b.x, b.y, color, 2);
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+            }
+
+            Monitor.Exit(_markersImage);
+        }
+
+        private void ColorImageUpdatedEventHandler(object sender, EventArgs args)
+        {
+            RecognizeMarkers(_sensor, _sensor.CurrentColorWidth, Sensor.ColorFrameHeight);
+        }
+
+        #endregion
+
+        #region Servo
+
+        private void RotateServo()
+        {
+            int angle = _servo.Angle;
+            _map.SetAngle(angle);
+
+            var isUp = true;
+            while (_isRotating && _servo.IsConnected)
+            {
+                if (isUp ? angle < 180 : angle > 0)
+                {
+                    angle += (isUp ? _shift : -_shift);
+                }
+                else
+                {
+                    isUp = !isUp;
+                    continue;
+                }
+
+                try
+                {
+                    _servo.Rotate((byte)angle);
+                }
+                catch
+                {
+                    _map.DisconnectServo();
+                    _isRotating = false;
+                    return;
+                }
+
+                _map.SetAngle(angle);
+
+                _mapWait.Reset();
+                _mapWait.Wait();
+            }
+        }
+
+        private void ConnectToServo(string port)
+        {
+            try
+            {
+                _servo.Connect(port);
+
+                _mapWait.Reset();
+                _map.ConnectServo(_mapWait);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(this, $"Failed to connect to servo.\r\n{exception.Message}", exception.GetType().Name, MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ShiftDegreeMenuItemClickEventHandler(object sender, RoutedEventArgs e)
+        {
+            var menuItem = (MenuItem)sender;
+            _shift = Convert.ToByte(menuItem.Header.ToString().TrimEnd('°'));
+        }
+
+        private void ServoAutoStartMenuIteckClickEventHandler(object sender, RoutedEventArgs e)
+        {
+            _isRotating = true;
+            Task.Run(() => RotateServo());
+        }
+
+        private void ServoAutoStopMenuIteckClickEventHandler(object sender, RoutedEventArgs e)
+        {
+            _isRotating = false;
+        }
+
+        private void ServoManualClickEventHandler(object sender, RoutedEventArgs e)
+        {
+            if (!_servo.IsConnected)
+                return;
+
+            var isLeft = ReferenceEquals(sender, ServoManualLeft);
+            var angle = _servo.Angle + (isLeft ? -_shift : _shift);
+
+            if (angle < 0 || angle > 180)
+                return;
+
+            _servo.Rotate((byte)angle);
+        }
+
+        private void ServoMenuItemLoadedEventHandler(object sender, RoutedEventArgs e)
+        {
+            var servoMenuItem = (MenuItem)sender;
+
+            servoMenuItem.Items.Clear();
+
+            var ports = SerialPort.GetPortNames();
+            Array.Sort(ports);
+
+            if (ports.Length == 0)
+            {
+                servoMenuItem.Items.Add(new MenuItem
+                {
+                    Header = "Empty",
+                    IsEnabled = false
+                });
+            }
+            else
+            {
+                foreach (var port in ports)
+                {
+                    var menuItem = new MenuItem { Header = port };
+                    menuItem.Click += PortMenuClickEventHandler;
+
+                    servoMenuItem.Items.Add(menuItem);
+                }
+            }
+        }
+
+        private void PortMenuClickEventHandler(object sender, RoutedEventArgs routedEventArgs)
+        {
+            var menuItem = (MenuItem)sender;
+            ConnectToServo(menuItem.Header.ToString());
+        }
+
+        #endregion
     }
 }

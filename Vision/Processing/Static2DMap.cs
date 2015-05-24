@@ -53,6 +53,11 @@ namespace Vision.Processing
             _servoEvent = servoEvent;
         }
 
+        public void DisconnectServo()
+        {
+            _servoEvent = null;
+        }
+
         public void Update(ushort[] data)
         {
             if (_servoEvent != null && _servoEvent.IsSet)

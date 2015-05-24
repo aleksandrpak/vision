@@ -122,6 +122,10 @@
       <Project>{C28DA17B-9E95-4D2C-B0EC-CBE92A11EC62}</Project>
       <Name>Processing</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Servo\Servo.csproj">
+      <Project>{D6A84170-95F3-46E9-9159-DB3450A0F26D}</Project>
+      <Name>Servo</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
