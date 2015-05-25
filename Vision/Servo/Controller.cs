@@ -6,7 +6,7 @@ namespace Servo
 {
     public sealed class Controller : IDisposable
     {
-        private const int AngleSpeedMsPerDegree = 5;
+        private const int AngleSpeedMsPerDegree = 10;
 
         private SerialPort _servo;
 
@@ -18,8 +18,8 @@ namespace Servo
         {
             _servo = new SerialPort(port, 9600);
             _servo.Open();
-
-            _servo.Write(new[] { (byte)90 }, 0, 1);
+            
+            _servo.Write(new byte[] { 90, 255 }, 0, 2);
             Thread.Sleep(200);
 
             Angle = 90;
@@ -31,8 +31,8 @@ namespace Servo
                 return;
 
             var diff = Math.Abs(Angle - angle);
-
-            _servo.Write(new[] { angle }, 0, 1);
+            
+            _servo.Write(new byte[] { angle, 255 }, 0, 2);
 
             Thread.Sleep(diff * AngleSpeedMsPerDegree);
 

@@ -2,11 +2,13 @@
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using jp.nyatla.nyartoolkit.cs.core;
 using jp.nyatla.nyartoolkit.cs.markersystem;
 using Microsoft.Kinect;
+using Vision.Processing;
 
 namespace Vision.Kinect
 {
@@ -41,7 +43,7 @@ namespace Vision.Kinect
         private ushort[] _depthDataCropped;
 
         private ushort[] _depthDataFlipped;
-        
+
         private WriteableBitmap _depthImage;
 
         private readonly byte[] _colorData;
@@ -54,11 +56,7 @@ namespace Vision.Kinect
 
         private EventHandler<EventArgs> _colorImageUpdated;
 
-        private EventHandler<ushort[]> _depthDataReceived;
-
         private int _colorImageSubscribers;
-
-        private int _depthDataSubscribers;
 
         private readonly Stopwatch _tickTimer;
 
@@ -106,6 +104,8 @@ namespace Vision.Kinect
 
         public ImageSource ColorImage => _colorImage;
 
+        public Func<ushort[], Task> DepthDataReceiver { get; set; }
+
         public bool MergeColorAndDepth
         {
             get { return _mergeColorAndDepth; }
@@ -134,42 +134,14 @@ namespace Vision.Kinect
         // Merge Point 
         // Margin: 98,98,98,98. Depth: 513, 424.828125, Color: 707, 397.6875
         public int CurrentDepthHeight => MergeColorAndDepth ? 397 : DepthFrameHeight;
-        
-        private void MultiSourceFrameArrivedEventHandler(object sender, MultiSourceFrameArrivedEventArgs args)
+
+        private async void MultiSourceFrameArrivedEventHandler(object sender, MultiSourceFrameArrivedEventArgs args)
         {
-            using (var image = new SensorImage(this))
-            {
-                if (!image.IsLocked)
-                    return;
+            var reference = args.FrameReference.AcquireFrame();
+            var currentTick = _tickTimer.ElapsedMilliseconds / 100;
 
-                var reference = args.FrameReference.AcquireFrame();
-                var currentTick = _tickTimer.ElapsedMilliseconds / 100;
-
-                if (_colorImageSubscribers > 0 && _colorTick != currentTick)
-                {
-                    using (var frame = reference.ColorFrameReference.AcquireFrame())
-                        image.LoadColorFrame(frame, _colorData, _colorDataCropped, _colorDataFlipped, _colorImage, CurrentColorWidth);
-                }
-
-                if (_depthTick != currentTick)
-                {
-                    using (var frame = reference.DepthFrameReference.AcquireFrame())
-                        image.LoadDepthFrame(frame, _depthData, _depthDataCropped, _depthDataFlipped, GenerateDepthImage, _depthImage, CurrentDepthHeight);
-                }
-
-                if (_depthDataSubscribers > 0 && image.DepthData != null)
-                {
-                    RaiseDepthDataReceived(image.DepthData);
-                    _depthTick = currentTick;
-                }
-
-                if (image.ColorImage != null)
-                {
-                    update(image.ColorImage.Value);
-                    RaiseColorImageUpdated();
-                    _colorTick = currentTick;
-                }
-            }
+            await AcquireColorFrame(currentTick, reference);
+            await AcquireDepthFrame(currentTick, reference);
         }
 
         #region Frame Handling
@@ -181,7 +153,7 @@ namespace Vision.Kinect
             if (_colorImageSubscribers > 0)
                 types |= FrameSourceTypes.Color;
 
-            if (GenerateDepthImage || _depthDataSubscribers > 0)
+            if (GenerateDepthImage || DepthDataReceiver != null)
                 types |= FrameSourceTypes.Depth;
 
             DestroyReader(types);
@@ -205,6 +177,147 @@ namespace Vision.Kinect
             _reader.MultiSourceFrameArrived -= MultiSourceFrameArrivedEventHandler;
             _reader.Dispose();
             _reader = null;
+        }
+
+        internal async Task LoadDepthFrame(ushort[] depthData, ushort[] depthDataCropped, ushort[] depthDataFlipped, bool generateDepthImage, WriteableBitmap image, int depthImageHeight)
+        {
+            await Task.Run(() =>
+            {
+                depthData.CropImage(depthDataCropped, DepthFrameWidth, DepthFrameHeight, DepthFrameWidth, depthImageHeight);
+                depthDataCropped.FlipImageHorizontally(depthDataFlipped, DepthFrameWidth);
+            });
+
+            if (DepthDataReceiver != null)
+                await DepthDataReceiver(depthDataFlipped);
+
+            if (generateDepthImage)
+            {
+                using (var context = image.GetBitmapContext(ReadWriteMode.ReadWrite))
+                {
+                    var pixelWidth = context.Width;
+
+                    for (var i = 0; i < depthImageHeight; ++i)
+                    {
+                        for (var j = 0; j < DepthFrameWidth; ++j)
+                        {
+                            var depth = Math.Min(depthDataFlipped[i * DepthFrameWidth + j], MaxDepth);
+                            var percent = (double)depth / MaxDepth;
+
+                            var blueIntensity = percent > 0.5 ? (percent - 0.5) * 2 : 0;
+                            var greenIntensity = percent > 0.5 ? 1 - percent : percent * 2;
+                            var redIntensity = Math.Max(0, 1 - percent * 2);
+
+                            unsafe
+                            {
+                                context.Pixels[i * pixelWidth + j] = -16777216 |
+                                                                   (int)(depth == 0 ? 0 : 255 * redIntensity) << 16 |
+                                                                   (int)(depth == 0 ? 0 : 255 * greenIntensity) << 8 |
+                                                                   (int)(depth == 0 ? 0 : 255 * blueIntensity);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private async Task LoadColorFrame(byte[] pixels, byte[] pixelsCropped, byte[] pixelsFlipped, WriteableBitmap image, int currentWidth)
+        {
+            await Task.Run(() =>
+            {
+                pixels.CropImage(pixelsCropped, ColorFrameWidth, ColorFrameHeight, currentWidth, ColorFrameHeight, 4);
+                pixelsCropped.FlipImageHorizontally(pixelsFlipped, currentWidth, 4);
+            });
+
+            // TODO: Allow to configure merge parameters
+            // Merge Point 
+            // Margin: 98,98,98,98. Depth: 513, 424.828125, Color: 707, 397.6875
+
+            unsafe
+            {
+                using (var context = image.GetBitmapContext(ReadWriteMode.ReadWrite))
+                {
+                    var pixelWidth = context.Width;
+
+                    for (var i = 0; i < ColorFrameHeight; ++i)
+                    {
+                        for (var j = 0; j < currentWidth; ++j)
+                        {
+                            var offset = i * currentWidth * 4 + j * 4;
+
+                            context.Pixels[i * pixelWidth + j] = -16777216 |
+                                                               pixelsFlipped[offset + 2] << 16 |
+                                                               pixelsFlipped[offset + 1] << 8 |
+                                                               pixelsFlipped[offset];
+                        }
+                    }
+                }
+            }
+
+            await Task.Run(() =>
+            {
+                update(new Image
+                {
+                    ImageType = ImageType.Color,
+                    Width = currentWidth,
+                    Height = ColorFrameHeight,
+                    DpiX = 96.0,
+                    DpiY = 96.0,
+                    Pixels = pixelsFlipped,
+                    Stride = currentWidth * 4,
+                    BitsPerPixel = 32
+                });
+            });
+
+            RaiseColorImageUpdated();
+        }
+
+        private async Task AcquireDepthFrame(long currentTick, MultiSourceFrame reference)
+        {
+            if (_depthTick == currentTick || (DepthDataReceiver == null && !GenerateDepthImage))
+                return;
+
+            using (var frame = reference.DepthFrameReference.AcquireFrame())
+            {
+                if (frame == null)
+                    return;
+
+                _depthTick = currentTick;
+
+                if (!Monitor.TryEnter(_depthData))
+                    return;
+
+                frame.CopyFrameDataToArray(_depthData);
+
+                await LoadDepthFrame(_depthData, _depthDataCropped, _depthDataFlipped, GenerateDepthImage, _depthImage, CurrentDepthHeight);
+
+                Monitor.Exit(_depthData);
+            }
+        }
+
+        private async Task AcquireColorFrame(long currentTick, MultiSourceFrame reference)
+        {
+            if (_colorImageSubscribers <= 0 || _colorTick == currentTick)
+                return;
+
+            using (var frame = reference.ColorFrameReference.AcquireFrame())
+            {
+                if (frame == null)
+                    return;
+
+                _colorTick = currentTick;
+
+                if (!Monitor.TryEnter(_colorData))
+                    return;
+
+                if (frame.RawColorImageFormat == ColorImageFormat.Bgra)
+                    frame.CopyRawFrameDataToArray(_colorData);
+                else
+                    frame.CopyConvertedFrameDataToArray(_colorData, ColorImageFormat.Bgra);
+
+                await LoadColorFrame(_colorData, _colorDataCropped, _colorDataFlipped, _colorImage, CurrentColorWidth);
+
+                Monitor.Exit(_colorData);
+            }
         }
 
         #endregion
@@ -245,11 +358,6 @@ namespace Vision.Kinect
             _colorImageUpdated?.Invoke(this, EventArgs.Empty);
         }
 
-        private void RaiseDepthDataReceived(ushort[] data)
-        {
-            _depthDataReceived?.Invoke(this, data);
-        }
-
         public event EventHandler<EventArgs> ColorImageUpdated
         {
             add
@@ -259,18 +367,6 @@ namespace Vision.Kinect
             remove
             {
                 RemoveEvent(ref _colorImageUpdated, value, ref _colorImageSubscribers);
-            }
-        }
-        
-        public event EventHandler<ushort[]> DepthDataReceived
-        {
-            add
-            {
-                AddEvent(ref _depthDataReceived, value, ref _depthDataSubscribers);
-            }
-            remove
-            {
-                RemoveEvent(ref _depthDataReceived, value, ref _depthDataSubscribers);
             }
         }
 

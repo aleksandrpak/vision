@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using jp.nyatla.nyartoolkit.cs.core;
@@ -62,9 +63,29 @@ namespace Vision.GUI
             InitializeSensor();
         }
 
+        protected override void OnPreviewKeyUp(KeyEventArgs e)
+        {
+            base.OnPreviewKeyUp(e);
+
+            switch (e.Key)
+            {
+                case Key.C:
+                    _map.Clear();
+                    break;
+
+                case Key.Left:
+                    ManualRotateServo(true);
+                    break;
+
+                case Key.Right:
+                    ManualRotateServo(false);
+                    break;
+            }
+        }
+
         #region Kinect
 
-        private void InitializeSensor()
+        private async void InitializeSensor()
         {
             _markerSystem = new NyARMarkerSystem(new NyARMarkerSystemConfig(Sensor.MergedColorFrameWidth, Sensor.ColorFrameHeight));
             _markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80));
@@ -72,11 +93,11 @@ namespace Vision.GUI
             try
             {
                 _sensor = new Sensor();
-                _sensor.DepthDataReceived += (sender, data) => _map.Update(data);
                 DepthImage.Source = _sensor.DepthImage;
                 ColorImage.Source = _sensor.ColorImage;
 
-                _map = new Static2DMap(Sensor.DepthFrameWidth, _sensor.CurrentDepthHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle * ((double)_sensor.CurrentDepthHeight / Sensor.DepthFrameHeight), Sensor.MaxDepth);
+                _map = new Static2DMap(Sensor.DepthFrameWidth, _sensor.CurrentDepthHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle * ((double)_sensor.CurrentDepthHeight / Sensor.DepthFrameHeight), Sensor.MaxDepth, 0);
+                _sensor.DepthDataReceiver = _map.Update;
 
                 UpdateImageVisibility();
             }
@@ -103,8 +124,8 @@ namespace Vision.GUI
 
                 using (var stream = new FileStream("Data/depthData.dat", FileMode.Open))
                 {
-                    _map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle, Sensor.MaxDepth);
-                    _map.Update((ushort[])formatter.Deserialize(stream));
+                    _map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle, Sensor.MaxDepth, 0);
+                    await _map.Update((ushort[])formatter.Deserialize(stream));
                 }
 
                 UpdateImageVisibility();
@@ -193,6 +214,11 @@ namespace Vision.GUI
                 DepthImage.Opacity = 1;
         }
 
+        private void ClearMapClickEventHandler(object sender, RoutedEventArgs e)
+        {
+            _map.Clear();
+        }
+
         #endregion
 
         #region Markers
@@ -236,7 +262,7 @@ namespace Vision.GUI
                             var a = points[j];
                             var b = j == points.Length - 1 ? points[0] : points[j + 1];
 
-                            WriteableBitmapExtensions.DrawLineAa(context, pixelWidth, pixelHeight, a.x, a.y, b.x, b.y, color, 2);
+                            WriteableBitmapExtensions.DrawLineAa(context, pixelWidth, pixelHeight, a.x, a.y, b.x, b.y, color, 10);
                         }
                     }
                 }
@@ -258,12 +284,17 @@ namespace Vision.GUI
 
         #region Servo
 
-        private void RotateServo()
+        private void AutoRotateServo()
         {
+            if (_isRotating)
+                return;
+
             int angle = _servo.Angle;
             _map.SetAngle(angle);
 
             var isUp = true;
+            _isRotating = true;
+
             while (_isRotating && _servo.IsConnected)
             {
                 if (isUp ? angle < 180 : angle > 0)
@@ -276,32 +307,42 @@ namespace Vision.GUI
                     continue;
                 }
 
-                try
-                {
-                    _servo.Rotate((byte)angle);
-                }
-                catch
-                {
-                    _map.DisconnectServo();
-                    _isRotating = false;
+                if (!RotateServo((byte)angle))
                     return;
-                }
-
-                _map.SetAngle(angle);
-
-                _mapWait.Reset();
-                _mapWait.Wait();
             }
         }
 
-        private void ConnectToServo(string port)
+        private bool RotateServo(byte angle)
+        {
+            _mapWait.Set();
+
+            try
+            {
+                _servo.Rotate(angle);
+            }
+            catch
+            {
+                _map.DisconnectServo();
+                _isRotating = false;
+                return false;
+            }
+
+            _map.SetAngle(angle);
+
+            _mapWait.Reset();
+            _mapWait.Wait();
+            return true;
+        }
+
+        private async void ConnectToServo(string port)
         {
             try
             {
-                _servo.Connect(port);
-
-                _mapWait.Reset();
-                _map.ConnectServo(_mapWait);
+                await Task.Run(() =>
+                {
+                    _servo.Connect(port);
+                    _map.ConnectServo(_mapWait);
+                });
             }
             catch (Exception exception)
             {
@@ -317,8 +358,7 @@ namespace Vision.GUI
 
         private void ServoAutoStartMenuIteckClickEventHandler(object sender, RoutedEventArgs e)
         {
-            _isRotating = true;
-            Task.Run(() => RotateServo());
+            Task.Run(() => AutoRotateServo());
         }
 
         private void ServoAutoStopMenuIteckClickEventHandler(object sender, RoutedEventArgs e)
@@ -328,16 +368,20 @@ namespace Vision.GUI
 
         private void ServoManualClickEventHandler(object sender, RoutedEventArgs e)
         {
+            ManualRotateServo(ReferenceEquals(sender, ServoManualLeft));
+        }
+
+        private async void ManualRotateServo(bool isLeft)
+        {
             if (!_servo.IsConnected)
                 return;
-
-            var isLeft = ReferenceEquals(sender, ServoManualLeft);
-            var angle = _servo.Angle + (isLeft ? -_shift : _shift);
+            
+            var angle = _servo.Angle + (isLeft ? _shift : -_shift);
 
             if (angle < 0 || angle > 180)
                 return;
 
-            _servo.Rotate((byte)angle);
+            await Task.Run(() => RotateServo((byte)angle));
         }
 
         private void ServoMenuItemLoadedEventHandler(object sender, RoutedEventArgs e)

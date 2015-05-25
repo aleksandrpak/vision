@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -8,7 +9,9 @@ namespace Vision.Processing
 {
     public sealed class Static2DMap
     {
-        private readonly List<DepthData>[] _map;
+        private readonly int _moveRadius;
+
+        private readonly Dictionary<DepthAngle, List<DepthData>> _map;
 
         private readonly WriteableBitmap _bitmap;
 
@@ -16,8 +19,9 @@ namespace Vision.Processing
 
         private ManualResetEventSlim _servoEvent;
 
-        public Static2DMap(int width, int height, double horizontalAngle, double verticalAngle, ushort maxDepth)
+        public Static2DMap(int width, int height, double horizontalAngle, double verticalAngle, ushort maxDepth, int moveRadius)
         {
+            _moveRadius = moveRadius;
             Width = width;
             Height = height;
             HorizontalAngle = horizontalAngle;
@@ -26,7 +30,7 @@ namespace Vision.Processing
 
             _bitmap = BitmapFactory.New(maxDepth / 5, maxDepth / 5);
 
-            _map = new List<DepthData>[(int)(360.0 / (HorizontalAngle / Width))];
+            _map = new Dictionary<DepthAngle, List<DepthData>>();
 
             _currentAngle = 90;
         }
@@ -58,21 +62,78 @@ namespace Vision.Processing
             _servoEvent = null;
         }
 
-        public void Update(ushort[] data)
+        public void Clear()
+        {
+            _bitmap.Clear();
+        }
+
+        public async Task Update(ushort[] data)
         {
             if (_servoEvent != null && _servoEvent.IsSet)
                 return;
 
+            await Task.Run(() => BuildMap(data));
+
+            var width = (double)MaxDepth * 2 / 10;
+            var shift = Math.PI / 2.0;
+
+            lock (_bitmap)
+            {
+                using (var context = _bitmap.GetBitmapContext(ReadWriteMode.ReadWrite))
+                {
+                    context.Clear();
+                    var pixelWidth = context.Width;
+
+                    foreach (var depthPair in _map)
+                    {
+                        var depthData = depthPair.Value;
+                        if (depthData == null)
+                            continue;
+
+                        var depthAngle = depthPair.Key;
+                        foreach (var depthItem in depthData)
+                        {
+                            var depth = depthItem.Depth / 10;
+                            if (depth == 0)
+                                continue;
+
+                            var angle = depthAngle.ScreenAngle - depthAngle.ViewAngle + shift;
+                            var x = (width / 2) + Math.Sin(angle) * depth;
+                            var y = (width / 2) - Math.Cos(angle) * depth;
+
+                            var viewAngle = -depthAngle.ViewAngle + shift;
+                            x += Math.Sin(viewAngle) * _moveRadius;
+                            y += Math.Cos(viewAngle) * _moveRadius;
+
+                            if (x < 0 || x > pixelWidth || y < 0 || y > pixelWidth)
+                                continue;
+
+                            unsafe
+                            {
+                                context.Pixels[(int)y * pixelWidth + (int)x] = -16777216 | depthItem.Red << 16 | depthItem.Green << 8;
+                            }
+                        }
+                    }
+                }
+            }
+
+            _servoEvent?.Set();
+        }
+
+        private void BuildMap(IReadOnlyList<ushort> data)
+        {
+            var currentRadians = _currentAngle * Math.PI / 180.0;
+
             for (var j = 0; j < Width; ++j)
             {
-                var angle = NormalizeAngle(_currentAngle - 90 - ((double)j / Width * HorizontalAngle));
-                var index = (int)(angle / 360.0 * (_map.Length - 1));
                 var horizontalScreenAngle = (j - Width / 2) / (double)Width * HorizontalAngle;
+                var depthAngle = new DepthAngle(currentRadians, horizontalScreenAngle * Math.PI / 180.0);
 
-                if (_map[index] == null)
-                    _map[index] = new List<DepthData>();
-                else
-                    _map[index].Clear();
+                List<DepthData> depthData;
+                if (!_map.TryGetValue(depthAngle, out depthData))
+                    _map[depthAngle] = depthData = new List<DepthData>();
+
+                depthData.Clear();
 
                 for (var i = 0; i < Height; ++i)
                 {
@@ -81,7 +142,7 @@ namespace Vision.Processing
                         continue;
 
                     var verticalScreenAngle = Math.Abs((i - Height / 2) / (double)Height * VerticalAngle);
-                    var height = (ushort)(Math.Sin((verticalScreenAngle) * Math.PI / 180.0) * depth / Math.Sin((90 - verticalScreenAngle) * Math.PI / 180.0));
+                    var height = (ushort)(Math.Sin(verticalScreenAngle * Math.PI / 180.0) * depth / Math.Sin((90 - verticalScreenAngle) * Math.PI / 180.0));
 
                     if (height > 2000)
                         continue;
@@ -91,51 +152,42 @@ namespace Vision.Processing
 
                     depth = (ushort)(depth / Math.Sin((90 - horizontalScreenAngle) * Math.PI / 180.0));
 
-                    _map[index].Add(new DepthData(depth, green, red));
+                    depthData.Add(new DepthData(depth, green, red));
                 }
             }
-
-            var width = (double)MaxDepth * 2 / 10;
-
-            unsafe
-            {
-                using (var context = _bitmap.GetBitmapContext(ReadWriteMode.ReadWrite))
-                {
-                    context.Clear();
-                    var pixelWidth = context.Width;
-
-                    for (var i = 0.0; i < _map.Length; ++i)
-                    {
-                        var depths = _map[(int)i];
-                        if (depths == null)
-                            continue;
-
-                        for (var j = 0; j < depths.Count; ++j)
-                        {
-                            var item = _map[(int)i][j];
-                            var depth = item.Depth / 10;
-                            if (depth == 0)
-                                continue;
-
-                            var angle = i / _map.Length * 2 * Math.PI + 2.181661565; // + 125 degrees
-                            var x = (int)((width / 2) + Math.Cos(angle) * depth);
-                            var y = (int)((width / 2) - Math.Sin(angle) * depth);
-
-                            context.Pixels[y * pixelWidth + x] = -16777216 | item.Red << 16 | item.Green << 8;
-                        }
-                    }
-                }
-            }
-
-            _servoEvent?.Set();
         }
 
-        private static double NormalizeAngle(double angle)
+        private struct DepthAngle : IEquatable<DepthAngle>
         {
-            while (angle < 0 || angle > 360)
-                angle += angle < 0 ? 360 : -360;
+            public DepthAngle(double viewAngle, double screenAngle)
+            {
+                ViewAngle = viewAngle;
+                ScreenAngle = screenAngle;
+            }
 
-            return angle;
+            public double ViewAngle { get; }
+            public double ScreenAngle { get; }
+
+            public override bool Equals(object obj)
+            {
+                if (ReferenceEquals(null, obj))
+                    return false;
+
+                return obj is DepthAngle && Equals((DepthAngle)obj);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return (ViewAngle.GetHashCode() * 397) ^ ScreenAngle.GetHashCode();
+                }
+            }
+
+            public bool Equals(DepthAngle other)
+            {
+                return ViewAngle.Equals(other.ViewAngle) && ScreenAngle.Equals(other.ScreenAngle);
+            }
         }
 
         private struct DepthData

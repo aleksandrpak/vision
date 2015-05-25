@@ -11,6 +11,7 @@
             <MenuItem Header="_View">
                 <MenuItem Name="ColorMenuItem" IsCheckable="True" Header="_Color" />
                 <MenuItem Name="DepthMenuItem" IsCheckable="True" Header="_Depth" />
+                <MenuItem Header="Clear _map" Click="ClearMapClickEventHandler" />
             </MenuItem>
             <MenuItem Header="Devices">
                 <MenuItem Header="Kinect">
@@ -30,8 +31,8 @@
                     <MenuItem Header="Stop" Click="ServoAutoStopMenuIteckClickEventHandler" />
                 </MenuItem>
                 <MenuItem Header="Manual">
-                    <MenuItem Header="Left" Name="ServoManualLeft" Click="ServoManualClickEventHandler" />
-                    <MenuItem Header="Right" Click="ServoManualClickEventHandler" />
+                    <MenuItem Header="_Left" Name="ServoManualLeft" Click="ServoManualClickEventHandler" />
+                    <MenuItem Header="_Right" Click="ServoManualClickEventHandler" />
                 </MenuItem>
             </MenuItem>
         </Menu>
