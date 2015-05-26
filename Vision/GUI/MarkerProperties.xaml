@@ -1,0 +1,35 @@
+﻿<Window x:Class="Vision.GUI.MarkerProperties"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Vision.GUI"
+        mc:Ignorable="d"
+        Title="MarkerProperties" Height="140" Width="300"
+        ResizeMode="NoResize">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition></RowDefinition>
+            <RowDefinition></RowDefinition>
+            <RowDefinition></RowDefinition>
+            <RowDefinition></RowDefinition>
+        </Grid.RowDefinitions>
+        
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition></ColumnDefinition>
+            <ColumnDefinition></ColumnDefinition>
+        </Grid.ColumnDefinitions>
+        
+        <Label Grid.Row="0" Grid.Column="0">Marker size (cm): </Label>
+        <TextBox Name="MarkerSizeTextBox" Grid.Row="0" Grid.Column="1"></TextBox>
+        
+        <Label Grid.Row="1" Grid.Column="0">Width (cm):</Label>
+        <TextBox Name="WidthTextBox" Grid.Row="1" Grid.Column="1"></TextBox>
+        
+        <Label Grid.Row="2" Grid.Column="0">Height (cm):</Label>
+        <TextBox Name="HeightTextBox" Grid.Row="2" Grid.Column="1"></TextBox>
+
+        <Button Grid.Row="3" Grid.Column="0" Click="OkButtonClickEventHandler">Ok</Button>
+        <Button Grid.Row="3" Grid.Column="1" Click="CancelButtonClickEventHandler">Cancel</Button>
+    </Grid>
+</Window>

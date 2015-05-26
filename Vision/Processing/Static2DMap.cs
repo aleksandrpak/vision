@@ -18,6 +18,8 @@ namespace Vision.Processing
         private double _currentAngle;
 
         private ManualResetEventSlim _servoEvent;
+        
+        private readonly Dictionary<int, int[]> _markers;
 
         public Static2DMap(int width, int height, double horizontalAngle, double verticalAngle, ushort maxDepth, int moveRadius)
         {
@@ -29,13 +31,17 @@ namespace Vision.Processing
             MaxDepth = maxDepth;
 
             _bitmap = BitmapFactory.New(maxDepth / 5, maxDepth / 5);
+            LastDepthData = new ushort[width * height];
 
             _map = new Dictionary<DepthAngle, List<DepthData>>();
+            _markers = new Dictionary<int, int[]>();
 
             _currentAngle = 90;
         }
 
         public ImageSource Image => _bitmap;
+
+        public ushort[] LastDepthData { get; }
 
         public int Width { get; }
 
@@ -64,7 +70,73 @@ namespace Vision.Processing
 
         public void Clear()
         {
-            _bitmap.Clear();
+            lock (_bitmap)
+                _bitmap.Clear();
+        }
+
+        public void AddMarker(int id, int leftX, int leftY, int rightX, int rightY, int height)
+        {
+            lock (LastDepthData)
+            {
+                const double shift = Math.PI / 2.0;
+                var mapWidth = (double)MaxDepth * 2 / 10;
+
+                var leftDepth = FindDepth(leftX, leftY, 5);
+                if (leftDepth == 0)
+                    return;
+
+                var rightDepth = FindDepth(rightX, rightY, 5);
+                if (rightDepth == 0)
+                    return;
+
+                var currentRadians = _currentAngle * Math.PI / 180.0;
+
+                var bottomLeftAngle = ((leftX - Width / 2) / (double)Width * HorizontalAngle * Math.PI / 180.0) - currentRadians + shift;
+                var bottomLeftX = (int)((mapWidth / 2) + Math.Sin(bottomLeftAngle) * leftDepth);
+                var bottomLeftY = (int)((mapWidth / 2) - Math.Cos(bottomLeftAngle) * leftDepth);
+
+                var bottomRightAngle = ((rightX - Width / 2) / (double)Width * HorizontalAngle * Math.PI / 180.0) - currentRadians + shift;
+                var bottomRightX = (int)((mapWidth / 2) + Math.Sin(bottomRightAngle) * rightDepth);
+                var bottomRightY = (int)((mapWidth / 2) - Math.Cos(bottomRightAngle) * rightDepth);
+
+                var topLeftX = bottomLeftX;
+                var topLeftY = Math.Max(0, bottomLeftY - height);
+
+                var topRightX = bottomRightX;
+                var topRightY = Math.Max(0, bottomRightY - height);
+
+                _markers[id] = new[] { bottomLeftX, bottomLeftY, bottomRightX, bottomRightY, topRightX, topRightY, topLeftX, topLeftY, bottomLeftX, bottomLeftY };
+            }
+        }
+
+        public void RemoveMarker(int id)
+        {
+            lock (LastDepthData)
+                _markers.Remove(id);
+        }
+
+        private ushort FindDepth(int x, int y, int steps)
+        {
+            for (var step = 0; step < steps; ++step)
+            {
+                for (var xStep = -step; xStep <= step; ++xStep)
+                {
+                    for (var yStep = -step; yStep <= step; ++yStep)
+                    {
+                        var newX = x + xStep;
+                        var newY = y + yStep;
+
+                        if (newX < 0 || newX > Width || newY < 0 || newY > Height)
+                            continue;
+
+                        var depth = LastDepthData[newY * Width + newX];
+                        if (depth != 0)
+                            return (ushort)(depth / 10);
+                    }
+                }
+            }
+
+            return 0;
         }
 
         public async Task Update(ushort[] data)
@@ -75,7 +147,7 @@ namespace Vision.Processing
             await Task.Run(() => BuildMap(data));
 
             var width = (double)MaxDepth * 2 / 10;
-            var shift = Math.PI / 2.0;
+            const double shift = Math.PI / 2.0;
 
             lock (_bitmap)
             {
@@ -114,14 +186,22 @@ namespace Vision.Processing
                             }
                         }
                     }
+
+                    
                 }
+
+                foreach (var marker in _markers.Values)
+                    _bitmap.FillPolygon(marker, Colors.Blue);
             }
 
             _servoEvent?.Set();
         }
 
-        private void BuildMap(IReadOnlyList<ushort> data)
+        private void BuildMap(ushort[] data)
         {
+            lock (LastDepthData)
+                Array.Copy(data, LastDepthData, Width * Height);
+
             var currentRadians = _currentAngle * Math.PI / 180.0;
 
             for (var j = 0; j < Width; ++j)

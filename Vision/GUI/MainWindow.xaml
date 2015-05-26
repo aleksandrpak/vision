@@ -35,6 +35,9 @@
                     <MenuItem Header="_Right" Click="ServoManualClickEventHandler" />
                 </MenuItem>
             </MenuItem>
+            <MenuItem Header="Markers">
+                <MenuItem Header="Add" Click="AddMarkerClickEventHandler" />
+            </MenuItem>
         </Menu>
         <Grid>
             <Grid.ColumnDefinitions>

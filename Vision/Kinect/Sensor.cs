@@ -64,6 +64,8 @@ namespace Vision.Kinect
 
         private long _depthTick;
 
+        private readonly DepthSpacePoint[] _lastPoints;
+
         #endregion
 
         public Sensor()
@@ -83,6 +85,8 @@ namespace Vision.Kinect
             _colorDataCropped = new byte[CurrentColorWidth * ColorFrameHeight * 4];
             _colorDataFlipped = new byte[CurrentColorWidth * ColorFrameHeight * 4];
             _colorImage = BitmapFactory.New(CurrentColorWidth, ColorFrameHeight);
+
+            _lastPoints = new DepthSpacePoint[ColorFrameWidth * ColorFrameHeight];
 
             _tickTimer = Stopwatch.StartNew();
 
@@ -135,6 +139,13 @@ namespace Vision.Kinect
         // Margin: 98,98,98,98. Depth: 513, 424.828125, Color: 707, 397.6875
         public int CurrentDepthHeight => MergeColorAndDepth ? 397 : DepthFrameHeight;
 
+        public void GetDepthSpacePoint(ref int x, ref int y)
+        {
+            var point = _lastPoints[y * ColorFrameWidth + x];
+            x = (int)point.X;
+            y = (int)point.Y;
+        }
+
         private async void MultiSourceFrameArrivedEventHandler(object sender, MultiSourceFrameArrivedEventArgs args)
         {
             var reference = args.FrameReference.AcquireFrame();
@@ -183,6 +194,7 @@ namespace Vision.Kinect
         {
             await Task.Run(() =>
             {
+                _sensor.CoordinateMapper.MapColorFrameToDepthSpace(depthData, _lastPoints);
                 depthData.CropImage(depthDataCropped, DepthFrameWidth, DepthFrameHeight, DepthFrameWidth, depthImageHeight);
                 depthDataCropped.FlipImageHorizontally(depthDataFlipped, DepthFrameWidth);
             });

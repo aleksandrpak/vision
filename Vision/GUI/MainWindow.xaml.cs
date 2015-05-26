@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Ports;
+using System.Linq;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using jp.nyatla.nyartoolkit.cs.core;
 using jp.nyatla.nyartoolkit.cs.markersystem;
+using Microsoft.Win32;
 using Servo;
 using Vision.Kinect;
 using Vision.Processing;
@@ -28,7 +30,7 @@ namespace Vision.GUI
 
         private NyARMarkerSystem _markerSystem;
 
-        private readonly List<int> _markers;
+        private Dictionary<int, MarkerData> _markers;
 
         private Static2DMap _map;
 
@@ -44,7 +46,7 @@ namespace Vision.GUI
 
         public MainWindow()
         {
-            _markers = new List<int>();
+            _markers = new Dictionary<int, MarkerData>();
 
             _servo = new Controller();
             _mapWait = new ManualResetEventSlim(true);
@@ -88,7 +90,7 @@ namespace Vision.GUI
         private async void InitializeSensor()
         {
             _markerSystem = new NyARMarkerSystem(new NyARMarkerSystemConfig(Sensor.MergedColorFrameWidth, Sensor.ColorFrameHeight));
-            _markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80));
+            //_markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80), new MarkerData { Filename = "patt.hiro", MarkerSize = 8, Width = 48, Height = 40 });
 
             try
             {
@@ -125,7 +127,10 @@ namespace Vision.GUI
                 using (var stream = new FileStream("Data/depthData.dat", FileMode.Open))
                 {
                     _map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle, Sensor.MaxDepth, 0);
-                    await _map.Update((ushort[])formatter.Deserialize(stream));
+                    var data = (ushort[])formatter.Deserialize(stream);
+                    var dataFlipped = new ushort[data.Length];
+                    data.FlipImageHorizontally(dataFlipped, Sensor.DepthFrameWidth);
+                    await _map.Update(dataFlipped);
                 }
 
                 UpdateImageVisibility();
@@ -223,6 +228,14 @@ namespace Vision.GUI
 
         #region Markers
 
+        private struct MarkerData
+        {
+            public string Filename { get; set; }
+            public int MarkerSize { get; set; }
+            public int Width { get; set; }
+            public int Height { get; set; }
+        }
+
         private async void RecognizeMarkers(NyARSensor sensor, int width, int height)
         {
             if (sensor == null)
@@ -241,8 +254,6 @@ namespace Vision.GUI
             {
                 try
                 {
-                    context.Clear();
-
                     var pixelWidth = context.Width;
                     var pixelHeight = context.Height;
                     var color = WriteableBitmapExtensions.ConvertColor(Colors.DarkRed);
@@ -251,18 +262,42 @@ namespace Vision.GUI
 
                     foreach (var marker in _markers)
                     {
-                        if (!_markerSystem.isExistMarker(marker))
+                        if (!_markerSystem.isExistMarker(marker.Key))
+                        {
+                            _map.RemoveMarker(marker.Key);
                             continue;
+                        }
 
-                        var points = _markerSystem.getMarkerVertex2D(marker);
+                        var points = _markerSystem.getMarkerVertex2D(marker.Key);
                         _markersImage.Clear();
+
+                        var kinect = sensor as Sensor;
+                        if (kinect != null)
+                        {
+                            var shift = (Sensor.ColorFrameWidth - width) / 2;
+                            var topLeft = points.OrderBy(p => p.x).ThenBy(p => p.y).First();
+                            var topRight = points.OrderByDescending(p => p.x).ThenBy(p => p.y).First();
+
+                            var topLeftX = Sensor.ColorFrameWidth - (topLeft.x + shift);
+                            var topLeftY = topLeft.y;
+                            var topRightX = Sensor.ColorFrameWidth - (topRight.x + shift);
+                            var topRightY = topRight.y;
+
+                            kinect.GetDepthSpacePoint(ref topLeftX, ref topLeftY);
+                            kinect.GetDepthSpacePoint(ref topRightX, ref topRightY);
+
+                            var multiplier = (marker.Value.Width / marker.Value.MarkerSize);
+                            topRightX = (topLeftX + (topRightX - topLeftX) * multiplier);
+
+                            _map.AddMarker(marker.Key, Sensor.DepthFrameWidth - topLeftX, topLeftY, Sensor.DepthFrameWidth - topRightX, topRightY, marker.Value.Height);
+                        }
 
                         for (var j = 0; j < points.Length; ++j)
                         {
                             var a = points[j];
                             var b = j == points.Length - 1 ? points[0] : points[j + 1];
 
-                            WriteableBitmapExtensions.DrawLineAa(context, pixelWidth, pixelHeight, a.x, a.y, b.x, b.y, color, 10);
+                            WriteableBitmapExtensions.DrawLineAa(context, pixelWidth, pixelHeight, a.x, a.y, b.x, b.y, color, 3);
                         }
                     }
                 }
@@ -271,13 +306,42 @@ namespace Vision.GUI
                     // ignored
                 }
             }
-
+            
             Monitor.Exit(_markersImage);
         }
 
         private void ColorImageUpdatedEventHandler(object sender, EventArgs args)
         {
             RecognizeMarkers(_sensor, _sensor.CurrentColorWidth, Sensor.ColorFrameHeight);
+        }
+
+        private void AddMarkerClickEventHandler(object sender, RoutedEventArgs e)
+        {
+            var openFileDialog = new OpenFileDialog
+            {
+                Multiselect = false,
+                CheckFileExists = true,
+                InitialDirectory = Path.GetFullPath("Data")
+            };
+
+            var result = openFileDialog.ShowDialog(this);
+            if (result.Value)
+            {
+                var markerProperties = new MarkerProperties();
+                var propertieResult = markerProperties.ShowDialog();
+                if (propertieResult != null && propertieResult.Value)
+                {
+                    _markers.Add(
+                        _markerSystem.addARMarker(openFileDialog.FileName, 16, 25, markerProperties.MarkerSize),
+                        new MarkerData
+                        {
+                            Filename = Path.GetFileName(openFileDialog.FileName),
+                            MarkerSize = markerProperties.MarkerSize,
+                            Width = markerProperties.MarkerWidth,
+                            Height = markerProperties.MarkerHeight
+                        });
+                }
+            }
         }
 
         #endregion
@@ -375,7 +439,7 @@ namespace Vision.GUI
         {
             if (!_servo.IsConnected)
                 return;
-            
+
             var angle = _servo.Angle + (isLeft ? _shift : -_shift);
 
             if (angle < 0 || angle > 180)
