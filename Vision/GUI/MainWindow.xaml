@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:Vision.GUI"
+        xmlns:gui="clr-namespace:Vision.GUI"
         mc:Ignorable="d"
         Title="Vision" Height="480" Width="640">
     <DockPanel>
@@ -40,19 +40,64 @@
             </MenuItem>
         </Menu>
         <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"></RowDefinition>
+                <RowDefinition Height="Auto"></RowDefinition>
+                <RowDefinition Height="*"></RowDefinition>
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="10" />
-                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            
-            <Image Name="ColorImage" Grid.Column="0" Margin="4" />
-            <Image Name="DepthImage" Grid.Column="0" Margin="4" />
-            <Image Name="MarkerImage" Grid.Column="0" Margin="4" />
-            
-            <Rectangle VerticalAlignment="Stretch" Grid.Column="1" Width="1" Stroke="Black" />
-            
-            <Image Name="MapImage" Grid.Column="2" Margin="4" />
+
+            <Border Grid.Column="0" Margin="4,4,4,0" Grid.Row="0" Background="Black" />
+            <Image Name="ColorImage" Grid.Column="0" Grid.Row="1" Margin="4,0" />
+            <Image Name="DepthImage" Grid.Column="0" Grid.Row="1" Margin="4,0" />
+            <Image Name="MarkerImage" Grid.Column="0" Grid.Row="1" Margin="4,0" />
+            <Border Grid.Column="0" Margin="4,0,4,4" Grid.Row="2" Background="Black" />
+
+            <Border VerticalAlignment="Stretch" Grid.Column="1" Grid.Row="0" Grid.RowSpan="3"  Width="1" Background="Black" />
+
+            <Grid Grid.Column="2" Grid.Row="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Image Name="CoordinateImage" Grid.Column="0" Margin="4,0" Grid.ColumnSpan="9" Grid.Row="0"/>
+                <Image Name="MapImage" Grid.Column="0" Grid.ColumnSpan="9" Margin="4,0" Grid.Row="0"/>
+    
+                <TextBlock Grid.Row="1" Grid.Column="0" Name="Coordinate1" HorizontalAlignment="Left" Text="400cm" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Name="Coordinate2" HorizontalAlignment="Left" Text="320cm" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Name="Coordinate3" HorizontalAlignment="Left" Text="240cm" />
+                <TextBlock Grid.Row="1" Grid.Column="3" Name="Coordinate4" HorizontalAlignment="Left" Text="160cm" />
+                <TextBlock Grid.Row="1" Grid.Column="4" Name="Coordinate5" HorizontalAlignment="Center" Text="0" />
+                <TextBlock Grid.Row="1" Grid.Column="5" Name="Coordinate6" HorizontalAlignment="Right" Text="160cm" />
+                <TextBlock Grid.Row="1" Grid.Column="6" Name="Coordinate7" HorizontalAlignment="Right" Text="240cm" />
+                <TextBlock Grid.Row="1" Grid.Column="7" Name="Coordinate8" HorizontalAlignment="Right" Text="320cm" />
+                <TextBlock Grid.Row="1" Grid.Column="8" Name="Coordinate9" HorizontalAlignment="Right" Text="400cm" />
+
+            </Grid>
+
+            <StackPanel Margin="5" Grid.Column="2" Grid.Row="2">
+                <CheckBox Margin="5" Name="IsDrawingCoordinates" IsChecked="True" Content="Coordinates" />
+                <CheckBox Margin="5" Name="IsRecognizingMarkers" IsChecked="True" Content="Markers recognition" />
+            </StackPanel>
+
+            <Slider Grid.Row="0" Grid.RowSpan="3" Grid.Column="3" Margin="4" Minimum="1000" Maximum="8000" TickPlacement="Both" TickFrequency="100" Orientation="Vertical" Value="4000" ValueChanged="RangeBase_OnValueChanged" />
         </Grid>
     </DockPanel>
 </Window>

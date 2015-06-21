@@ -9,29 +9,27 @@ namespace Vision.Processing
 {
     public sealed class Static2DMap
     {
-        private readonly int _moveRadius;
-
         private readonly Dictionary<DepthAngle, List<DepthData>> _map;
 
-        private readonly WriteableBitmap _bitmap;
+        private WriteableBitmap _bitmap;
 
         private double _currentAngle;
 
         private ManualResetEventSlim _servoEvent;
-        
-        private readonly Dictionary<int, int[]> _markers;
 
-        public Static2DMap(int width, int height, double horizontalAngle, double verticalAngle, ushort maxDepth, int moveRadius)
+        private readonly Dictionary<int, int[]> _markers;
+        private ushort _maxDepth;
+
+        public Static2DMap(int width, int height, double horizontalAngle, double verticalAngle, ushort maxDepth)
         {
-            _moveRadius = moveRadius;
             Width = width;
             Height = height;
             HorizontalAngle = horizontalAngle;
             VerticalAngle = verticalAngle;
             MaxDepth = maxDepth;
 
-            _bitmap = BitmapFactory.New(maxDepth / 5, maxDepth / 5);
-            LastDepthData = new ushort[width * height];
+            _bitmap = BitmapFactory.New(MaxDepth / 5, MaxDepth / 5 / 2);
+            LastDepthData = new ushort[Width * Height];
 
             _map = new Dictionary<DepthAngle, List<DepthData>>();
             _markers = new Dictionary<int, int[]>();
@@ -51,7 +49,23 @@ namespace Vision.Processing
 
         public double VerticalAngle { get; }
 
-        public ushort MaxDepth { get; }
+        public ushort MaxDepth
+        {
+            get { return _maxDepth; }
+            set
+            {
+                _maxDepth = value;
+
+                if (_bitmap == null)
+                    return;
+
+                var oldBitmap = _bitmap;
+                lock (oldBitmap)
+                {
+                    _bitmap = BitmapFactory.New(value / 5, value / 5 / 2);
+                }
+            }
+        }
 
         public void SetAngle(double angle)
         {
@@ -79,7 +93,7 @@ namespace Vision.Processing
             lock (LastDepthData)
             {
                 const double shift = Math.PI / 2.0;
-                var mapWidth = (double)MaxDepth * 2 / 10;
+                var mapWidth = (double)MaxDepth / 10;
 
                 var leftDepth = FindDepth(leftX, leftY, 5);
                 if (leftDepth == 0)
@@ -92,12 +106,12 @@ namespace Vision.Processing
                 var currentRadians = _currentAngle * Math.PI / 180.0;
 
                 var bottomLeftAngle = ((leftX - Width / 2) / (double)Width * HorizontalAngle * Math.PI / 180.0) - currentRadians + shift;
-                var bottomLeftX = (int)((mapWidth / 2) + Math.Sin(bottomLeftAngle) * leftDepth);
-                var bottomLeftY = (int)((mapWidth / 2) - Math.Cos(bottomLeftAngle) * leftDepth);
+                var bottomLeftX = (int)(mapWidth + Math.Sin(bottomLeftAngle) * leftDepth);
+                var bottomLeftY = (int)(mapWidth - Math.Cos(bottomLeftAngle) * leftDepth);
 
                 var bottomRightAngle = ((rightX - Width / 2) / (double)Width * HorizontalAngle * Math.PI / 180.0) - currentRadians + shift;
-                var bottomRightX = (int)((mapWidth / 2) + Math.Sin(bottomRightAngle) * rightDepth);
-                var bottomRightY = (int)((mapWidth / 2) - Math.Cos(bottomRightAngle) * rightDepth);
+                var bottomRightX = (int)(mapWidth + Math.Sin(bottomRightAngle) * rightDepth);
+                var bottomRightY = (int)(mapWidth - Math.Cos(bottomRightAngle) * rightDepth);
 
                 var topLeftX = bottomLeftX;
                 var topLeftY = Math.Max(0, bottomLeftY - height);
@@ -146,7 +160,7 @@ namespace Vision.Processing
 
             await Task.Run(() => BuildMap(data));
 
-            var width = (double)MaxDepth * 2 / 10;
+            var width = (double)MaxDepth / 10;
             const double shift = Math.PI / 2.0;
 
             lock (_bitmap)
@@ -170,12 +184,8 @@ namespace Vision.Processing
                                 continue;
 
                             var angle = depthAngle.ScreenAngle - depthAngle.ViewAngle + shift;
-                            var x = (width / 2) + Math.Sin(angle) * depth;
-                            var y = (width / 2) - Math.Cos(angle) * depth;
-
-                            var viewAngle = -depthAngle.ViewAngle + shift;
-                            x += Math.Sin(viewAngle) * _moveRadius;
-                            y += Math.Cos(viewAngle) * _moveRadius;
+                            var x = width + Math.Sin(angle) * depth;
+                            var y = width - Math.Cos(angle) * depth;
 
                             if (x < 0 || x > pixelWidth || y < 0 || y > pixelWidth)
                                 continue;
@@ -186,8 +196,6 @@ namespace Vision.Processing
                             }
                         }
                     }
-
-                    
                 }
 
                 foreach (var marker in _markers.Values)
@@ -203,6 +211,8 @@ namespace Vision.Processing
                 Array.Copy(data, LastDepthData, Width * Height);
 
             var currentRadians = _currentAngle * Math.PI / 180.0;
+            var maxDepth = MaxDepth;
+            _map.Clear();
 
             for (var j = 0; j < Width; ++j)
             {
@@ -217,7 +227,7 @@ namespace Vision.Processing
 
                 for (var i = 0; i < Height; ++i)
                 {
-                    var depth = Math.Min(MaxDepth, data[i * Width + j]);
+                    var depth = Math.Min(maxDepth, data[i * Width + (Width - j - 1)]);
                     if (depth == 0)
                         continue;
 
@@ -232,7 +242,7 @@ namespace Vision.Processing
 
                     depth = (ushort)(depth / Math.Sin((90 - horizontalScreenAngle) * Math.PI / 180.0));
 
-                    depthData.Add(new DepthData(depth, green, red));
+                    depthData.Add(new DepthData(depth, red, green));
                 }
             }
         }

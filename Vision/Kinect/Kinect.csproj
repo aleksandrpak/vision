@@ -89,7 +89,6 @@
   <ItemGroup>
     <Compile Include="Sensor.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="SensorImage.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

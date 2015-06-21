@@ -28,31 +28,21 @@ namespace Vision.Kinect
 
         public const int ColorFrameWidth = 1920;
 
-        public const int MergedColorFrameWidth = (int)((ColorFrameWidth / 707.0) * 513.0);
-
         public const int ColorFrameHeight = 1080;
 
         private readonly KinectSensor _sensor;
 
         private MultiSourceFrameReader _reader;
 
-        private bool _mergeColorAndDepth;
-
         private readonly ushort[] _depthData;
 
-        private ushort[] _depthDataCropped;
-
-        private ushort[] _depthDataFlipped;
-
-        private WriteableBitmap _depthImage;
+        private readonly WriteableBitmap _depthImage;
 
         private readonly byte[] _colorData;
 
-        private byte[] _colorDataCropped;
+        private readonly byte[] _colorDataFlipped;
 
-        private byte[] _colorDataFlipped;
-
-        private WriteableBitmap _colorImage;
+        private readonly WriteableBitmap _colorImage;
 
         private EventHandler<EventArgs> _colorImageUpdated;
 
@@ -64,29 +54,25 @@ namespace Vision.Kinect
 
         private long _depthTick;
 
-        private readonly DepthSpacePoint[] _lastPoints;
+        private readonly DepthSpacePoint[] _lastDepthPoints;
 
         #endregion
 
         public Sensor()
-            : base(new NyARIntSize((int)((ColorFrameWidth / 707.0) * 513.0), ColorFrameHeight))
+            : base(new NyARIntSize(ColorFrameWidth, ColorFrameHeight))
         {
             _sensor = KinectSensor.GetDefault();
 
             GenerateDepthImage = true;
-            MergeColorAndDepth = true;
 
             _depthData = new ushort[DepthFrameWidth * DepthFrameHeight];
-            _depthDataCropped = new ushort[DepthFrameWidth * CurrentDepthHeight];
-            _depthDataFlipped = new ushort[DepthFrameWidth * CurrentDepthHeight];
-            _depthImage = BitmapFactory.New(DepthFrameWidth, CurrentDepthHeight);
+            _depthImage = BitmapFactory.New(ColorFrameWidth, ColorFrameHeight);
 
             _colorData = new byte[ColorFrameWidth * ColorFrameHeight * 4];
-            _colorDataCropped = new byte[CurrentColorWidth * ColorFrameHeight * 4];
-            _colorDataFlipped = new byte[CurrentColorWidth * ColorFrameHeight * 4];
-            _colorImage = BitmapFactory.New(CurrentColorWidth, ColorFrameHeight);
+            _colorDataFlipped = new byte[ColorFrameWidth * ColorFrameHeight * 4];
+            _colorImage = BitmapFactory.New(ColorFrameWidth, ColorFrameHeight);
 
-            _lastPoints = new DepthSpacePoint[ColorFrameWidth * ColorFrameHeight];
+            _lastDepthPoints = new DepthSpacePoint[ColorFrameWidth * ColorFrameHeight];
 
             _tickTimer = Stopwatch.StartNew();
 
@@ -99,49 +85,17 @@ namespace Vision.Kinect
 
             if (!_sensor.IsOpen || !_sensor.IsAvailable)
                 throw new InvalidOperationException("Failed to open Kinect sensor.");
-
         }
 
         public bool IsConnected => _sensor.IsOpen && _sensor.IsAvailable;
-
         public ImageSource DepthImage => _depthImage;
-
         public ImageSource ColorImage => _colorImage;
-
         public Func<ushort[], Task> DepthDataReceiver { get; set; }
-
-        public bool MergeColorAndDepth
-        {
-            get { return _mergeColorAndDepth; }
-            set
-            {
-                if (_mergeColorAndDepth == value)
-                    return;
-
-                _mergeColorAndDepth = value;
-
-                _depthDataCropped = new ushort[DepthFrameWidth * CurrentDepthHeight];
-                _depthDataFlipped = new ushort[DepthFrameWidth * CurrentDepthHeight];
-                _depthImage = BitmapFactory.New(DepthFrameWidth, CurrentDepthHeight);
-
-                _colorDataCropped = new byte[CurrentColorWidth * ColorFrameHeight * 4];
-                _colorDataFlipped = new byte[CurrentColorWidth * ColorFrameHeight * 4];
-                _colorImage = BitmapFactory.New(CurrentColorWidth, ColorFrameHeight);
-            }
-        }
-
         public bool GenerateDepthImage { get; set; }
-
-        public int CurrentColorWidth => MergeColorAndDepth ? MergedColorFrameWidth : ColorFrameWidth;
-
-        // TODO: Allow to configure merge parameters
-        // Merge Point 
-        // Margin: 98,98,98,98. Depth: 513, 424.828125, Color: 707, 397.6875
-        public int CurrentDepthHeight => MergeColorAndDepth ? 397 : DepthFrameHeight;
 
         public void GetDepthSpacePoint(ref int x, ref int y)
         {
-            var point = _lastPoints[y * ColorFrameWidth + x];
+            var point = _lastDepthPoints[y * ColorFrameWidth + x];
             x = (int)point.X;
             y = (int)point.Y;
         }
@@ -190,59 +144,57 @@ namespace Vision.Kinect
             _reader = null;
         }
 
-        internal async Task LoadDepthFrame(ushort[] depthData, ushort[] depthDataCropped, ushort[] depthDataFlipped, bool generateDepthImage, WriteableBitmap image, int depthImageHeight)
+        private async Task LoadDepthFrame(ushort[] depthData, bool generateDepthImage, WriteableBitmap image)
         {
             await Task.Run(() =>
             {
-                _sensor.CoordinateMapper.MapColorFrameToDepthSpace(depthData, _lastPoints);
-                depthData.CropImage(depthDataCropped, DepthFrameWidth, DepthFrameHeight, DepthFrameWidth, depthImageHeight);
-                depthDataCropped.FlipImageHorizontally(depthDataFlipped, DepthFrameWidth);
+                _sensor.CoordinateMapper.MapColorFrameToDepthSpace(depthData, _lastDepthPoints);
             });
 
             if (DepthDataReceiver != null)
-                await DepthDataReceiver(depthDataFlipped);
+                await DepthDataReceiver(depthData);
 
-            if (generateDepthImage)
+            if (!generateDepthImage)
+                return;
+
+            using (var context = image.GetBitmapContext(ReadWriteMode.ReadWrite))
             {
-                using (var context = image.GetBitmapContext(ReadWriteMode.ReadWrite))
+                context.Clear();
+
+                for (var i = 0; i < ColorFrameHeight; ++i)
                 {
-                    var pixelWidth = context.Width;
-
-                    for (var i = 0; i < depthImageHeight; ++i)
+                    for (var j = 0; j < ColorFrameWidth; ++j)
                     {
-                        for (var j = 0; j < DepthFrameWidth; ++j)
+                        var depthPoint = _lastDepthPoints[i*ColorFrameWidth + j];
+                        if (float.IsNegativeInfinity(depthPoint.X) || float.IsNegativeInfinity(depthPoint.Y))
+                            continue;
+
+                        var depth = Math.Min(depthData[(int)depthPoint.Y * DepthFrameWidth + (int)depthPoint.X], MaxDepth);
+                        var percent = (double)depth / MaxDepth;
+
+                        var blueIntensity = percent > 0.5 ? (percent - 0.5) * 2 : 0;
+                        var greenIntensity = percent > 0.5 ? 1 - percent : percent * 2;
+                        var redIntensity = Math.Max(0, 1 - percent * 2);
+                        var pixel = -16777216 |
+                                    (int)(depth == 0 ? 0 : 255 * redIntensity) << 16 |
+                                    (int)(depth == 0 ? 0 : 255 * greenIntensity) << 8 |
+                                    (int)(depth == 0 ? 0 : 255 * blueIntensity);
+
+                        unsafe
                         {
-                            var depth = Math.Min(depthDataFlipped[i * DepthFrameWidth + j], MaxDepth);
-                            var percent = (double)depth / MaxDepth;
-
-                            var blueIntensity = percent > 0.5 ? (percent - 0.5) * 2 : 0;
-                            var greenIntensity = percent > 0.5 ? 1 - percent : percent * 2;
-                            var redIntensity = Math.Max(0, 1 - percent * 2);
-
-                            unsafe
-                            {
-                                context.Pixels[i * pixelWidth + j] = -16777216 |
-                                                                   (int)(depth == 0 ? 0 : 255 * redIntensity) << 16 |
-                                                                   (int)(depth == 0 ? 0 : 255 * greenIntensity) << 8 |
-                                                                   (int)(depth == 0 ? 0 : 255 * blueIntensity);
-                            }
+                            context.Pixels[i * ColorFrameWidth + (ColorFrameWidth - j - 1)] = pixel;
                         }
                     }
                 }
             }
         }
 
-        private async Task LoadColorFrame(byte[] pixels, byte[] pixelsCropped, byte[] pixelsFlipped, WriteableBitmap image, int currentWidth)
+        private async Task LoadColorFrame(byte[] pixels, byte[] pixelsFlipped, WriteableBitmap image)
         {
             await Task.Run(() =>
             {
-                pixels.CropImage(pixelsCropped, ColorFrameWidth, ColorFrameHeight, currentWidth, ColorFrameHeight, 4);
-                pixelsCropped.FlipImageHorizontally(pixelsFlipped, currentWidth, 4);
+                pixels.FlipImageHorizontally(pixelsFlipped, ColorFrameWidth, 4);
             });
-
-            // TODO: Allow to configure merge parameters
-            // Merge Point 
-            // Margin: 98,98,98,98. Depth: 513, 424.828125, Color: 707, 397.6875
 
             unsafe
             {
@@ -252,9 +204,9 @@ namespace Vision.Kinect
 
                     for (var i = 0; i < ColorFrameHeight; ++i)
                     {
-                        for (var j = 0; j < currentWidth; ++j)
+                        for (var j = 0; j < ColorFrameWidth; ++j)
                         {
-                            var offset = i * currentWidth * 4 + j * 4;
+                            var offset = i * ColorFrameWidth * 4 + j * 4;
 
                             context.Pixels[i * pixelWidth + j] = -16777216 |
                                                                pixelsFlipped[offset + 2] << 16 |
@@ -270,12 +222,12 @@ namespace Vision.Kinect
                 update(new Image
                 {
                     ImageType = ImageType.Color,
-                    Width = currentWidth,
+                    Width = ColorFrameWidth,
                     Height = ColorFrameHeight,
                     DpiX = 96.0,
                     DpiY = 96.0,
                     Pixels = pixelsFlipped,
-                    Stride = currentWidth * 4,
+                    Stride = ColorFrameWidth * 4,
                     BitsPerPixel = 32
                 });
             });
@@ -300,7 +252,7 @@ namespace Vision.Kinect
 
                 frame.CopyFrameDataToArray(_depthData);
 
-                await LoadDepthFrame(_depthData, _depthDataCropped, _depthDataFlipped, GenerateDepthImage, _depthImage, CurrentDepthHeight);
+                await LoadDepthFrame(_depthData, GenerateDepthImage, _depthImage);
 
                 Monitor.Exit(_depthData);
             }
@@ -326,7 +278,7 @@ namespace Vision.Kinect
                 else
                     frame.CopyConvertedFrameDataToArray(_colorData, ColorImageFormat.Bgra);
 
-                await LoadColorFrame(_colorData, _colorDataCropped, _colorDataFlipped, _colorImage, CurrentColorWidth);
+                await LoadColorFrame(_colorData, _colorDataFlipped, _colorImage);
 
                 Monitor.Exit(_colorData);
             }
@@ -372,14 +324,8 @@ namespace Vision.Kinect
 
         public event EventHandler<EventArgs> ColorImageUpdated
         {
-            add
-            {
-                AddEvent(ref _colorImageUpdated, value, ref _colorImageSubscribers);
-            }
-            remove
-            {
-                RemoveEvent(ref _colorImageUpdated, value, ref _colorImageSubscribers);
-            }
+            add { AddEvent(ref _colorImageUpdated, value, ref _colorImageSubscribers); }
+            remove { RemoveEvent(ref _colorImageUpdated, value, ref _colorImageSubscribers); }
         }
 
         #endregion

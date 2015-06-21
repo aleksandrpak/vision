@@ -30,9 +30,7 @@ namespace Vision.GUI
 
         private NyARMarkerSystem _markerSystem;
 
-        private Dictionary<int, MarkerData> _markers;
-
-        private Static2DMap _map;
+        private readonly Dictionary<int, MarkerData> _markers;
 
         private WriteableBitmap _markersImage;
 
@@ -43,9 +41,12 @@ namespace Vision.GUI
         private int _shift;
 
         private bool _isRotating;
+        private Static2DMap _map;
 
         public MainWindow()
         {
+            DataContext = this;
+
             _markers = new Dictionary<int, MarkerData>();
 
             _servo = new Controller();
@@ -57,12 +58,16 @@ namespace Vision.GUI
             ColorMenuItem.IsChecked = true;
             DepthMenuItem.IsChecked = true;
 
-            ColorMenuItem.Checked += ViewMenuItemCheckedEventHandler;
-            ColorMenuItem.Unchecked += ViewMenuItemCheckedEventHandler;
-            DepthMenuItem.Checked += ViewMenuItemCheckedEventHandler;
-            DepthMenuItem.Unchecked += ViewMenuItemCheckedEventHandler;
+            ColorMenuItem.Checked += VisibilityCheckBoxesClicked;
+            ColorMenuItem.Unchecked += VisibilityCheckBoxesClicked;
+            DepthMenuItem.Checked += VisibilityCheckBoxesClicked;
+            DepthMenuItem.Unchecked += VisibilityCheckBoxesClicked;
+            IsDrawingCoordinates.Checked += VisibilityCheckBoxesClicked;
+            IsDrawingCoordinates.Unchecked += VisibilityCheckBoxesClicked;
 
             InitializeSensor();
+
+            DrawCoordinates();
         }
 
         protected override void OnPreviewKeyUp(KeyEventArgs e)
@@ -85,11 +90,57 @@ namespace Vision.GUI
             }
         }
 
+        private void RangeBase_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> args)
+        {
+            if (_map == null)
+                return;
+
+            var maxDepth = (ushort)args.NewValue;
+            var shift = maxDepth / 5;
+            _map.MaxDepth = maxDepth;
+
+            Coordinate1.Text = Coordinate9.Text = $"{maxDepth / 10} cm";
+            Coordinate2.Text = Coordinate8.Text = $"{(maxDepth - shift) / 10} cm";
+            Coordinate3.Text = Coordinate7.Text = $"{(maxDepth - shift * 2) / 10} cm";
+            Coordinate4.Text = Coordinate6.Text = $"{(maxDepth - shift * 3) / 10} cm";
+
+            MapImage.Source = _map.Image;
+        }
+
+        private void DrawCoordinates()
+        {
+            var bitmap = BitmapFactory.New((int)MapImage.Source.Width, (int)MapImage.Source.Height);
+
+            var width = bitmap.PixelWidth;
+            var height = bitmap.PixelHeight;
+            var center = width / 2;
+            var shift = height / 5;
+
+            for (var i = 0; i < 5; ++i)
+            {
+                var size = height + shift - shift * i;
+                bitmap.DrawEllipseCentered(center, height, size, size, Colors.Black);
+            }
+
+            bitmap.DrawRectangle(0, 0, width, height, Colors.Black);
+
+            for (var i = 0; i <= 8; ++i)
+                bitmap.DrawLine(width * i / 8, 0, center, height, Colors.Black);
+
+            for (var i = 0; i <= 6; ++i)
+                bitmap.DrawLine(0, height * i / 6, center, height, Colors.Black);
+
+            for (var i = 0; i <= 6; ++i)
+                bitmap.DrawLine(width, height * i / 6, center, height, Colors.Black);
+
+            CoordinateImage.Source = bitmap;
+        }
+
         #region Kinect
 
         private async void InitializeSensor()
         {
-            _markerSystem = new NyARMarkerSystem(new NyARMarkerSystemConfig(Sensor.MergedColorFrameWidth, Sensor.ColorFrameHeight));
+            _markerSystem = new NyARMarkerSystem(new NyARMarkerSystemConfig(Sensor.ColorFrameWidth, Sensor.ColorFrameHeight));
             //_markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80), new MarkerData { Filename = "patt.hiro", MarkerSize = 8, Width = 48, Height = 40 });
 
             try
@@ -98,7 +149,7 @@ namespace Vision.GUI
                 DepthImage.Source = _sensor.DepthImage;
                 ColorImage.Source = _sensor.ColorImage;
 
-                _map = new Static2DMap(Sensor.DepthFrameWidth, _sensor.CurrentDepthHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle * ((double)_sensor.CurrentDepthHeight / Sensor.DepthFrameHeight), Sensor.MaxDepth, 0);
+                _map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle, Sensor.MaxDepth / 2);
                 _sensor.DepthDataReceiver = _map.Update;
 
                 UpdateImageVisibility();
@@ -126,7 +177,7 @@ namespace Vision.GUI
 
                 using (var stream = new FileStream("Data/depthData.dat", FileMode.Open))
                 {
-                    _map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle, Sensor.MaxDepth, 0);
+                    _map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle, Sensor.MaxDepth / 2);
                     var data = (ushort[])formatter.Deserialize(stream);
                     var dataFlipped = new ushort[data.Length];
                     data.FlipImageHorizontally(dataFlipped, Sensor.DepthFrameWidth);
@@ -193,7 +244,7 @@ namespace Vision.GUI
             imageControl.Source = BitmapSource.Create(image.Width, image.Height, image.DpiX, image.DpiY, format, null, image.Pixels, image.Stride);
         }
 
-        private void ViewMenuItemCheckedEventHandler(object sender, RoutedEventArgs e)
+        private void VisibilityCheckBoxesClicked(object sender, RoutedEventArgs e)
         {
             UpdateImageVisibility();
         }
@@ -217,6 +268,18 @@ namespace Vision.GUI
                 DepthImage.Opacity = 0.5;
             else
                 DepthImage.Opacity = 1;
+
+            var coordinatesVisibility = IsDrawingCoordinates.IsChecked.Value ? Visibility.Visible : Visibility.Hidden;
+            CoordinateImage.Visibility = coordinatesVisibility;
+            Coordinate1.Visibility = coordinatesVisibility;
+            Coordinate2.Visibility = coordinatesVisibility;
+            Coordinate3.Visibility = coordinatesVisibility;
+            Coordinate4.Visibility = coordinatesVisibility;
+            Coordinate5.Visibility = coordinatesVisibility;
+            Coordinate6.Visibility = coordinatesVisibility;
+            Coordinate7.Visibility = coordinatesVisibility;
+            Coordinate8.Visibility = coordinatesVisibility;
+            Coordinate9.Visibility = coordinatesVisibility;
         }
 
         private void ClearMapClickEventHandler(object sender, RoutedEventArgs e)
@@ -260,16 +323,17 @@ namespace Vision.GUI
 
                     await Task.Run(() => _markerSystem.update(sensor));
 
+                    context.Clear();
+
                     foreach (var marker in _markers)
                     {
-                        if (!_markerSystem.isExistMarker(marker.Key))
+                        if (!_markerSystem.isExistMarker(marker.Key) || !IsRecognizingMarkers.IsChecked.Value)
                         {
                             _map.RemoveMarker(marker.Key);
                             continue;
                         }
 
                         var points = _markerSystem.getMarkerVertex2D(marker.Key);
-                        _markersImage.Clear();
 
                         var kinect = sensor as Sensor;
                         if (kinect != null)
@@ -306,13 +370,13 @@ namespace Vision.GUI
                     // ignored
                 }
             }
-            
+
             Monitor.Exit(_markersImage);
         }
 
         private void ColorImageUpdatedEventHandler(object sender, EventArgs args)
         {
-            RecognizeMarkers(_sensor, _sensor.CurrentColorWidth, Sensor.ColorFrameHeight);
+            RecognizeMarkers(_sensor, Sensor.ColorFrameWidth, Sensor.ColorFrameHeight);
         }
 
         private void AddMarkerClickEventHandler(object sender, RoutedEventArgs e)
@@ -361,7 +425,7 @@ namespace Vision.GUI
 
             while (_isRotating && _servo.IsConnected)
             {
-                if (isUp ? angle < 180 : angle > 0)
+                if (isUp ? angle < 120 : angle > 60)
                 {
                     angle += (isUp ? _shift : -_shift);
                 }
