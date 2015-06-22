@@ -8,35 +8,33 @@
         Title="Vision" Height="480" Width="640">
     <DockPanel>
         <Menu DockPanel.Dock="Top">
-            <MenuItem Header="_View">
-                <MenuItem Name="ColorMenuItem" IsCheckable="True" Header="_Color" />
-                <MenuItem Name="DepthMenuItem" IsCheckable="True" Header="_Depth" />
-                <MenuItem Header="Clear _map" Click="ClearMapClickEventHandler" />
+            <MenuItem Header="Вид">
+                <MenuItem Header="Очистить карту" Click="ClearMapClickEventHandler" />
             </MenuItem>
-            <MenuItem Header="Devices">
+            <MenuItem Header="Устройства">
                 <MenuItem Header="Kinect">
                     <MenuItem Name="KinectStatusMenuItem" Header="KinectStatus" Click="KinectStatusMenuItemClickEventHandler" Loaded="KinectStatusMenuItemLoadedEventHandler" />
                 </MenuItem>
-                <MenuItem Header="Servo" Loaded="ServoMenuItemLoadedEventHandler" />
+                <MenuItem Header="Сервопривод" Loaded="ServoMenuItemLoadedEventHandler" />
             </MenuItem>
-            <MenuItem Header="Servo">
+            <MenuItem Header="Сервопривод">
                 <MenuItem Header="Shift">
                     <MenuItem Header="1°" Click="ShiftDegreeMenuItemClickEventHandler" />
                     <MenuItem Header="5°" Click="ShiftDegreeMenuItemClickEventHandler" />
                     <MenuItem Header="10°" Click="ShiftDegreeMenuItemClickEventHandler" />
                     <MenuItem Header="15°" Click="ShiftDegreeMenuItemClickEventHandler" />
                 </MenuItem>
-                <MenuItem Header="Auto">
-                    <MenuItem Header="Start" Click="ServoAutoStartMenuIteckClickEventHandler" />
-                    <MenuItem Header="Stop" Click="ServoAutoStopMenuIteckClickEventHandler" />
+                <MenuItem Header="Авто">
+                    <MenuItem Header="Старт" Click="ServoAutoStartMenuIteckClickEventHandler" />
+                    <MenuItem Header="Стоп" Click="ServoAutoStopMenuIteckClickEventHandler" />
                 </MenuItem>
-                <MenuItem Header="Manual">
-                    <MenuItem Header="_Left" Name="ServoManualLeft" Click="ServoManualClickEventHandler" />
-                    <MenuItem Header="_Right" Click="ServoManualClickEventHandler" />
+                <MenuItem Header="Ручное">
+                    <MenuItem Header="Влево" Name="ServoManualLeft" Click="ServoManualClickEventHandler" />
+                    <MenuItem Header="Вправо" Click="ServoManualClickEventHandler" />
                 </MenuItem>
             </MenuItem>
-            <MenuItem Header="Markers">
-                <MenuItem Header="Add" Click="AddMarkerClickEventHandler" />
+            <MenuItem Header="Метки">
+                <MenuItem Header="Добавить" Click="AddMarkerClickEventHandler" />
             </MenuItem>
         </Menu>
         <Grid>
@@ -78,23 +76,34 @@
                 </Grid.ColumnDefinitions>
 
                 <Image Name="CoordinateImage" Grid.Column="0" Margin="4,0" Grid.ColumnSpan="9" Grid.Row="0"/>
-                <Image Name="MapImage" Grid.Column="0" Grid.ColumnSpan="9" Margin="4,0" Grid.Row="0"/>
+                <Image Name="ObstacleMapImage" Grid.Column="0" Grid.ColumnSpan="9" Margin="4,0" Grid.Row="0"/>
+                <Image Name="OtherMapImage" Grid.Column="0" Grid.ColumnSpan="9" Margin="4,0" Grid.Row="0"/>
     
-                <TextBlock Grid.Row="1" Grid.Column="0" Name="Coordinate1" HorizontalAlignment="Left" Text="400cm" />
-                <TextBlock Grid.Row="1" Grid.Column="1" Name="Coordinate2" HorizontalAlignment="Left" Text="320cm" />
-                <TextBlock Grid.Row="1" Grid.Column="2" Name="Coordinate3" HorizontalAlignment="Left" Text="240cm" />
-                <TextBlock Grid.Row="1" Grid.Column="3" Name="Coordinate4" HorizontalAlignment="Left" Text="160cm" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Name="Coordinate1" HorizontalAlignment="Left" Text="400см" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Name="Coordinate2" HorizontalAlignment="Left" Text="320см" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Name="Coordinate3" HorizontalAlignment="Left" Text="240см" />
+                <TextBlock Grid.Row="1" Grid.Column="3" Name="Coordinate4" HorizontalAlignment="Left" Text="160см" />
                 <TextBlock Grid.Row="1" Grid.Column="4" Name="Coordinate5" HorizontalAlignment="Center" Text="0" />
-                <TextBlock Grid.Row="1" Grid.Column="5" Name="Coordinate6" HorizontalAlignment="Right" Text="160cm" />
-                <TextBlock Grid.Row="1" Grid.Column="6" Name="Coordinate7" HorizontalAlignment="Right" Text="240cm" />
-                <TextBlock Grid.Row="1" Grid.Column="7" Name="Coordinate8" HorizontalAlignment="Right" Text="320cm" />
-                <TextBlock Grid.Row="1" Grid.Column="8" Name="Coordinate9" HorizontalAlignment="Right" Text="400cm" />
+                <TextBlock Grid.Row="1" Grid.Column="5" Name="Coordinate6" HorizontalAlignment="Right" Text="160см" />
+                <TextBlock Grid.Row="1" Grid.Column="6" Name="Coordinate7" HorizontalAlignment="Right" Text="240см" />
+                <TextBlock Grid.Row="1" Grid.Column="7" Name="Coordinate8" HorizontalAlignment="Right" Text="320см" />
+                <TextBlock Grid.Row="1" Grid.Column="8" Name="Coordinate9" HorizontalAlignment="Right" Text="400см" />
 
             </Grid>
 
-            <StackPanel Margin="5" Grid.Column="2" Grid.Row="2">
-                <CheckBox Margin="5" Name="IsDrawingCoordinates" IsChecked="True" Content="Coordinates" />
-                <CheckBox Margin="5" Name="IsRecognizingMarkers" IsChecked="True" Content="Markers recognition" />
+            <StackPanel Margin="4,20,4,4" Grid.Column="2" Grid.Row="2">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Margin="5" Text="Высота тележки (см):" />
+                    <TextBox Margin="5" Width="150" Text="20" Name="HostHeightTextBox" />
+                    <Button Content="Применить" Click="ButtonBase_OnClick"></Button>
+                </StackPanel>
+
+                <CheckBox Margin="5" Name="IsRecognizingMarkers" IsChecked="True" Content="Распознавать метки" />
+                <CheckBox Margin="5" Name="IsDrawingColorStream" IsChecked="True" Content="Показывать цветное изображение" />
+                <CheckBox Margin="5" Name="IsDrawingDepthStream" IsChecked="True" Content="Показывать карту глубины" />
+                <CheckBox Margin="5" Name="IsDrawingCoordinates" IsChecked="True" Content="Показывать координаты" />
+                <CheckBox Margin="5" Name="IsDrawingObstacles" IsChecked="True" Content="Показывать препятствия" />
+                <CheckBox Margin="5" Name="IsDrawingOther" IsChecked="True" Content="Показывать другие объекты" />
             </StackPanel>
 
             <Slider Grid.Row="0" Grid.RowSpan="3" Grid.Column="3" Margin="4" Minimum="1000" Maximum="8000" TickPlacement="Both" TickFrequency="100" Orientation="Vertical" Value="4000" ValueChanged="RangeBase_OnValueChanged" />

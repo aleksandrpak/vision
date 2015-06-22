@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Vision.GUI"
         mc:Ignorable="d"
-        Title="MarkerProperties" Height="140" Width="300"
+        Title="Свойства метки" Height="140" Width="300"
         ResizeMode="NoResize">
     <Grid>
         <Grid.RowDefinitions>
@@ -20,16 +20,16 @@
             <ColumnDefinition></ColumnDefinition>
         </Grid.ColumnDefinitions>
         
-        <Label Grid.Row="0" Grid.Column="0">Marker size (cm): </Label>
+        <Label Grid.Row="0" Grid.Column="0">Размер метки (см): </Label>
         <TextBox Name="MarkerSizeTextBox" Grid.Row="0" Grid.Column="1"></TextBox>
         
-        <Label Grid.Row="1" Grid.Column="0">Width (cm):</Label>
+        <Label Grid.Row="1" Grid.Column="0">Ширина объекта (см):</Label>
         <TextBox Name="WidthTextBox" Grid.Row="1" Grid.Column="1"></TextBox>
         
-        <Label Grid.Row="2" Grid.Column="0">Height (cm):</Label>
+        <Label Grid.Row="2" Grid.Column="0">Глубина объекта (см):</Label>
         <TextBox Name="HeightTextBox" Grid.Row="2" Grid.Column="1"></TextBox>
 
-        <Button Grid.Row="3" Grid.Column="0" Click="OkButtonClickEventHandler">Ok</Button>
-        <Button Grid.Row="3" Grid.Column="1" Click="CancelButtonClickEventHandler">Cancel</Button>
+        <Button Grid.Row="3" Grid.Column="0" Click="OkButtonClickEventHandler">Добавить</Button>
+        <Button Grid.Row="3" Grid.Column="1" Click="CancelButtonClickEventHandler">Отмена</Button>
     </Grid>
 </Window>

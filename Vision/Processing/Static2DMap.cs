@@ -11,7 +11,8 @@ namespace Vision.Processing
     {
         private readonly Dictionary<DepthAngle, List<DepthData>> _map;
 
-        private WriteableBitmap _bitmap;
+        private WriteableBitmap _obstaclesBitmap;
+        private WriteableBitmap _otherBitmap;
 
         private double _currentAngle;
 
@@ -20,15 +21,17 @@ namespace Vision.Processing
         private readonly Dictionary<int, int[]> _markers;
         private ushort _maxDepth;
 
-        public Static2DMap(int width, int height, double horizontalAngle, double verticalAngle, ushort maxDepth)
+        public Static2DMap(int width, int height, double horizontalAngle, double verticalAngle, ushort maxDepth, ushort hostHeight)
         {
             Width = width;
             Height = height;
             HorizontalAngle = horizontalAngle;
             VerticalAngle = verticalAngle;
             MaxDepth = maxDepth;
+            HostHeight = hostHeight;
 
-            _bitmap = BitmapFactory.New(MaxDepth / 5, MaxDepth / 5 / 2);
+            _obstaclesBitmap = BitmapFactory.New(MaxDepth / 5, MaxDepth / 5 / 2);
+            _otherBitmap = BitmapFactory.New(MaxDepth / 5, MaxDepth / 5 / 2);
             LastDepthData = new ushort[Width * Height];
 
             _map = new Dictionary<DepthAngle, List<DepthData>>();
@@ -37,7 +40,9 @@ namespace Vision.Processing
             _currentAngle = 90;
         }
 
-        public ImageSource Image => _bitmap;
+        public ImageSource ObstaclesImage => _obstaclesBitmap;
+
+        public ImageSource OtherImage => _otherBitmap;
 
         public ushort[] LastDepthData { get; }
 
@@ -56,16 +61,19 @@ namespace Vision.Processing
             {
                 _maxDepth = value;
 
-                if (_bitmap == null)
+                if (_obstaclesBitmap == null)
                     return;
 
-                var oldBitmap = _bitmap;
+                var oldBitmap = _obstaclesBitmap;
                 lock (oldBitmap)
                 {
-                    _bitmap = BitmapFactory.New(value / 5, value / 5 / 2);
+                    _obstaclesBitmap = BitmapFactory.New(MaxDepth / 5, MaxDepth / 5 / 2);
+                    _otherBitmap = BitmapFactory.New(MaxDepth / 5, MaxDepth / 5 / 2);
                 }
             }
         }
+
+        public ushort HostHeight { get; set; }
 
         public void SetAngle(double angle)
         {
@@ -84,8 +92,11 @@ namespace Vision.Processing
 
         public void Clear()
         {
-            lock (_bitmap)
-                _bitmap.Clear();
+            lock (_obstaclesBitmap)
+            {
+                _obstaclesBitmap.Clear();
+                _otherBitmap.Clear();
+            }
         }
 
         public void AddMarker(int id, int leftX, int leftY, int rightX, int rightY, int height)
@@ -163,12 +174,15 @@ namespace Vision.Processing
             var width = (double)MaxDepth / 10;
             const double shift = Math.PI / 2.0;
 
-            lock (_bitmap)
+            lock (_obstaclesBitmap)
             {
-                using (var context = _bitmap.GetBitmapContext(ReadWriteMode.ReadWrite))
+                using (var obstaclesContext = _obstaclesBitmap.GetBitmapContext(ReadWriteMode.ReadWrite))
+                using (var otherContext = _otherBitmap.GetBitmapContext(ReadWriteMode.ReadWrite))
                 {
-                    context.Clear();
-                    var pixelWidth = context.Width;
+                    obstaclesContext.Clear();
+                    otherContext.Clear();
+
+                    var pixelWidth = obstaclesContext.Width;
 
                     foreach (var depthPair in _map)
                     {
@@ -192,14 +206,17 @@ namespace Vision.Processing
 
                             unsafe
                             {
-                                context.Pixels[(int)y * pixelWidth + (int)x] = -16777216 | depthItem.Red << 16 | depthItem.Green << 8;
+                                if (depthItem.IsObstacle)
+                                    obstaclesContext.Pixels[(int) y*pixelWidth + (int) x] = -16777216 | 255 << 16;
+                                else
+                                    otherContext.Pixels[(int)y * pixelWidth + (int)x] = -16777216 | 255 << 8;
                             }
                         }
                     }
                 }
 
                 foreach (var marker in _markers.Values)
-                    _bitmap.FillPolygon(marker, Colors.Blue);
+                    _obstaclesBitmap.FillPolygon(marker, Colors.Blue);
             }
 
             _servoEvent?.Set();
@@ -231,18 +248,20 @@ namespace Vision.Processing
                     if (depth == 0)
                         continue;
 
-                    var verticalScreenAngle = Math.Abs((i - Height / 2) / (double)Height * VerticalAngle);
-                    var height = (ushort)(Math.Sin(verticalScreenAngle * Math.PI / 180.0) * depth / Math.Sin((90 - verticalScreenAngle) * Math.PI / 180.0));
+                    var isObstacle = false;
 
-                    if (height > 2000)
-                        continue;
+                    if (i >= Height / 2)
+                    {
+                        var verticalScreenAngle = Math.Abs((i - Height / 2) / (double)Height * VerticalAngle);
+                        var height = (ushort)(Math.Sin(verticalScreenAngle * Math.PI / 180.0) * depth / Math.Sin((90 - verticalScreenAngle) * Math.PI / 180.0));
 
-                    var red = (byte)(((2000 - height) / 2000.0) * 255.0);
-                    var green = (byte)(((height) / 2000.0) * 255.0);
+                        if (height <= HostHeight * 10)
+                            isObstacle = true;
+                    }
 
                     depth = (ushort)(depth / Math.Sin((90 - horizontalScreenAngle) * Math.PI / 180.0));
 
-                    depthData.Add(new DepthData(depth, red, green));
+                    depthData.Add(new DepthData(depth, isObstacle));
                 }
             }
         }
@@ -282,16 +301,14 @@ namespace Vision.Processing
 
         private struct DepthData
         {
-            public DepthData(ushort depth, byte red, byte green)
+            public DepthData(ushort depth, bool isObstacle)
             {
                 Depth = depth;
-                Red = red;
-                Green = green;
+                IsObstacle = isObstacle;
             }
 
             public ushort Depth { get; }
-            public byte Red { get; }
-            public byte Green { get; }
+            public bool IsObstacle { get; }
         }
     }
 }

@@ -55,15 +55,19 @@ namespace Vision.GUI
 
             InitializeComponent();
 
-            ColorMenuItem.IsChecked = true;
-            DepthMenuItem.IsChecked = true;
+            IsDrawingColorStream.IsChecked = true;
+            IsDrawingDepthStream.IsChecked = true;
 
-            ColorMenuItem.Checked += VisibilityCheckBoxesClicked;
-            ColorMenuItem.Unchecked += VisibilityCheckBoxesClicked;
-            DepthMenuItem.Checked += VisibilityCheckBoxesClicked;
-            DepthMenuItem.Unchecked += VisibilityCheckBoxesClicked;
+            IsDrawingColorStream.Checked += VisibilityCheckBoxesClicked;
+            IsDrawingColorStream.Unchecked += VisibilityCheckBoxesClicked;
+            IsDrawingDepthStream.Checked += VisibilityCheckBoxesClicked;
+            IsDrawingDepthStream.Unchecked += VisibilityCheckBoxesClicked;
             IsDrawingCoordinates.Checked += VisibilityCheckBoxesClicked;
             IsDrawingCoordinates.Unchecked += VisibilityCheckBoxesClicked;
+            IsDrawingObstacles.Checked += VisibilityCheckBoxesClicked;
+            IsDrawingObstacles.Unchecked += VisibilityCheckBoxesClicked;
+            IsDrawingOther.Checked += VisibilityCheckBoxesClicked;
+            IsDrawingOther.Unchecked += VisibilityCheckBoxesClicked;
 
             InitializeSensor();
 
@@ -90,6 +94,8 @@ namespace Vision.GUI
             }
         }
 
+        #region Map
+
         private void RangeBase_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> args)
         {
             if (_map == null)
@@ -99,17 +105,26 @@ namespace Vision.GUI
             var shift = maxDepth / 5;
             _map.MaxDepth = maxDepth;
 
-            Coordinate1.Text = Coordinate9.Text = $"{maxDepth / 10} cm";
-            Coordinate2.Text = Coordinate8.Text = $"{(maxDepth - shift) / 10} cm";
-            Coordinate3.Text = Coordinate7.Text = $"{(maxDepth - shift * 2) / 10} cm";
-            Coordinate4.Text = Coordinate6.Text = $"{(maxDepth - shift * 3) / 10} cm";
+            Coordinate1.Text = Coordinate9.Text = $"{maxDepth / 10} см";
+            Coordinate2.Text = Coordinate8.Text = $"{(maxDepth - shift) / 10} см";
+            Coordinate3.Text = Coordinate7.Text = $"{(maxDepth - shift * 2) / 10} см";
+            Coordinate4.Text = Coordinate6.Text = $"{(maxDepth - shift * 3) / 10} см";
 
-            MapImage.Source = _map.Image;
+            ObstacleMapImage.Source = _map.ObstaclesImage;
+            OtherMapImage.Source = _map.OtherImage;
         }
 
         private void DrawCoordinates()
         {
-            var bitmap = BitmapFactory.New((int)MapImage.Source.Width, (int)MapImage.Source.Height);
+            if (ObstacleMapImage.Source == null)
+            {
+                IsDrawingCoordinates.IsChecked = false;
+                return;
+            }
+
+            IsDrawingCoordinates.IsChecked = true;
+
+            var bitmap = BitmapFactory.New((int)ObstacleMapImage.Source.Width, (int)ObstacleMapImage.Source.Height);
 
             var width = bitmap.PixelWidth;
             var height = bitmap.PixelHeight;
@@ -136,6 +151,20 @@ namespace Vision.GUI
             CoordinateImage.Source = bitmap;
         }
 
+        private void ButtonBase_OnClick(object sender, EventArgs args)
+        {
+            ushort height;
+            if (!ushort.TryParse(HostHeightTextBox.Text, out height))
+            {
+                MessageBox.Show("Неверная высота тележки.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            _map.HostHeight = height;
+        }
+
+        #endregion
+
         #region Kinect
 
         private async void InitializeSensor()
@@ -149,7 +178,7 @@ namespace Vision.GUI
                 DepthImage.Source = _sensor.DepthImage;
                 ColorImage.Source = _sensor.ColorImage;
 
-                _map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle, Sensor.MaxDepth / 2);
+                _map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle, Sensor.MaxDepth / 2, 20);
                 _sensor.DepthDataReceiver = _map.Update;
 
                 UpdateImageVisibility();
@@ -177,7 +206,7 @@ namespace Vision.GUI
 
                 using (var stream = new FileStream("Data/depthData.dat", FileMode.Open))
                 {
-                    _map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle, Sensor.MaxDepth / 2);
+                    _map = new Static2DMap(Sensor.DepthFrameWidth, Sensor.DepthFrameHeight, Sensor.DepthFrameHorizontalAngle, Sensor.DepthFrameVerticalAngle, Sensor.MaxDepth / 2, 20);
                     var data = (ushort[])formatter.Deserialize(stream);
                     var dataFlipped = new ushort[data.Length];
                     data.FlipImageHorizontally(dataFlipped, Sensor.DepthFrameWidth);
@@ -186,12 +215,13 @@ namespace Vision.GUI
 
                 UpdateImageVisibility();
 
-                MessageBox.Show(this, $"Using stored images.\r\n{exception.Message}", exception.GetType().Name, MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, $"Используются сохраненные изображения.\r\n{exception.Message}", exception.GetType().Name, MessageBoxButton.OK, MessageBoxImage.Error);
             }
 
-            MapImage.Source = _map.Image;
+            ObstacleMapImage.Source = _map.ObstaclesImage;
+            OtherMapImage.Source = _map.OtherImage;
         }
-
+        
         private void KinectStatusMenuItemClickEventHandler(object sender, RoutedEventArgs e)
         {
             InitializeSensor();
@@ -208,7 +238,7 @@ namespace Vision.GUI
             var isOpen = _sensor != null && _sensor.IsConnected;
 
             KinectStatusMenuItem.IsEnabled = !isOpen;
-            KinectStatusMenuItem.Header = isOpen ? "Connected" : "Connect";
+            KinectStatusMenuItem.Header = isOpen ? "Подключен" : "Подключиться";
         }
 
         private void LoadImage(Image image)
@@ -255,16 +285,16 @@ namespace Vision.GUI
             {
                 _sensor.ColorImageUpdated -= ColorImageUpdatedEventHandler;
 
-                if (ColorMenuItem.IsChecked)
+                if (IsDrawingColorStream.IsChecked.Value)
                     _sensor.ColorImageUpdated += ColorImageUpdatedEventHandler;
 
-                _sensor.GenerateDepthImage = DepthMenuItem.IsChecked;
+                _sensor.GenerateDepthImage = IsDrawingDepthStream.IsChecked.Value;
             }
 
-            ColorImage.Visibility = ColorMenuItem.IsChecked ? Visibility.Visible : Visibility.Hidden;
-            DepthImage.Visibility = DepthMenuItem.IsChecked ? Visibility.Visible : Visibility.Hidden;
+            ColorImage.Visibility = IsDrawingColorStream.IsChecked.Value ? Visibility.Visible : Visibility.Hidden;
+            DepthImage.Visibility = IsDrawingDepthStream.IsChecked.Value ? Visibility.Visible : Visibility.Hidden;
 
-            if (ColorMenuItem.IsChecked && DepthMenuItem.IsChecked)
+            if (IsDrawingColorStream.IsChecked.Value && IsDrawingDepthStream.IsChecked.Value)
                 DepthImage.Opacity = 0.5;
             else
                 DepthImage.Opacity = 1;
@@ -280,6 +310,12 @@ namespace Vision.GUI
             Coordinate7.Visibility = coordinatesVisibility;
             Coordinate8.Visibility = coordinatesVisibility;
             Coordinate9.Visibility = coordinatesVisibility;
+
+            if (IsDrawingCoordinates.IsChecked.Value && CoordinateImage.Source == null)
+                DrawCoordinates();
+
+            ObstacleMapImage.Visibility = IsDrawingObstacles.IsChecked.Value ? Visibility.Visible : Visibility.Hidden;
+            OtherMapImage.Visibility = IsDrawingOther.IsChecked.Value ? Visibility.Visible : Visibility.Hidden;
         }
 
         private void ClearMapClickEventHandler(object sender, RoutedEventArgs e)
@@ -474,7 +510,7 @@ namespace Vision.GUI
             }
             catch (Exception exception)
             {
-                MessageBox.Show(this, $"Failed to connect to servo.\r\n{exception.Message}", exception.GetType().Name, MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, $"Неудалось подключиться к сервоприводу.\r\n{exception.Message}", exception.GetType().Name, MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -525,7 +561,7 @@ namespace Vision.GUI
             {
                 servoMenuItem.Items.Add(new MenuItem
                 {
-                    Header = "Empty",
+                    Header = "Нет портов",
                     IsEnabled = false
                 });
             }

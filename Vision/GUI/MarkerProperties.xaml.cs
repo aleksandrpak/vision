@@ -23,7 +23,7 @@ namespace Vision.GUI
                 !ushort.TryParse(WidthTextBox.Text, out width) ||
                 !ushort.TryParse(HeightTextBox.Text, out height))
             {
-                MessageBox.Show(this, "Invalid data for marker", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, "Неверные данные метки", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 DialogResult = false;
             }
             else
