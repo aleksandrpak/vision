@@ -38,7 +38,7 @@ namespace Vision.Processing
             _map = new Dictionary<DepthAngle, List<DepthData>>();
             _markers = new Dictionary<int, int[]>();
 
-            _currentAngle = 120;
+            _currentAngle = 90;
         }
 
         public ImageSource ObstaclesImage => _obstaclesBitmap;
