@@ -15,13 +15,15 @@ namespace Vision.GUI
         public ushort MarkerSize { get; private set; }
         public ushort MarkerWidth { get; private set; }
         public ushort MarkerHeight { get; private set; }
+        public ushort MarkerDepth { get; private set; }
 
         private void OkButtonClickEventHandler(object sender, RoutedEventArgs e)
         {
-            ushort markerSize, width, height;
+            ushort markerSize, width, height, depth;
             if (!ushort.TryParse(MarkerSizeTextBox.Text, out markerSize) ||
                 !ushort.TryParse(WidthTextBox.Text, out width) ||
-                !ushort.TryParse(HeightTextBox.Text, out height))
+                !ushort.TryParse(HeightTextBox.Text, out height) ||
+                !ushort.TryParse(DepthTextBox.Text, out depth))
             {
                 MessageBox.Show(this, "Неверные данные метки", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 DialogResult = false;
@@ -31,6 +33,7 @@ namespace Vision.GUI
                 MarkerSize = markerSize;
                 MarkerWidth = width;
                 MarkerHeight = height;
+                MarkerDepth = depth;
                 DialogResult = true;
             }
 

@@ -170,7 +170,7 @@ namespace Vision.GUI
         private async void InitializeSensor()
         {
             _markerSystem = new NyARMarkerSystem(new NyARMarkerSystemConfig(Sensor.ColorFrameWidth, Sensor.ColorFrameHeight));
-            //_markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80), new MarkerData { Filename = "patt.hiro", MarkerSize = 8, Width = 48, Height = 40 });
+            //_markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80), new MarkerData { Filename = "patt.hiro", MarkerSize = 8, Width = 48, Depth = 40 });
 
             try
             {
@@ -221,7 +221,7 @@ namespace Vision.GUI
             ObstacleMapImage.Source = _map.ObstaclesImage;
             OtherMapImage.Source = _map.OtherImage;
         }
-        
+
         private void KinectStatusMenuItemClickEventHandler(object sender, RoutedEventArgs e)
         {
             InitializeSensor();
@@ -333,6 +333,7 @@ namespace Vision.GUI
             public int MarkerSize { get; set; }
             public int Width { get; set; }
             public int Height { get; set; }
+            public int Depth { get; set; }
         }
 
         private async void RecognizeMarkers(NyARSensor sensor, int width, int height)
@@ -370,26 +371,39 @@ namespace Vision.GUI
                         }
 
                         var points = _markerSystem.getMarkerVertex2D(marker.Key);
+                        var matrix = _markerSystem.getMarkerMatrix(marker.Key);
+                        var anglePoints = new NyARDoublePoint3d();
+                        matrix.getZXYAngle(anglePoints);
 
                         var kinect = sensor as Sensor;
                         if (kinect != null)
                         {
-                            var shift = (Sensor.ColorFrameWidth - width) / 2;
                             var topLeft = points.OrderBy(p => p.x).ThenBy(p => p.y).First();
                             var topRight = points.OrderByDescending(p => p.x).ThenBy(p => p.y).First();
+                            var bottomLeft = points.OrderBy(p => p.x).ThenByDescending(p => p.y).First();
+                            var bottomRight = points.OrderByDescending(p => p.x).ThenByDescending(p => p.y).First();
 
-                            var topLeftX = Sensor.ColorFrameWidth - (topLeft.x + shift);
+                            var topLeftX = Sensor.ColorFrameWidth - topLeft.x;
                             var topLeftY = topLeft.y;
-                            var topRightX = Sensor.ColorFrameWidth - (topRight.x + shift);
+                            var topRightX = Sensor.ColorFrameWidth - topRight.x;
                             var topRightY = topRight.y;
+                            var bottomLeftX = Sensor.ColorFrameWidth - bottomLeft.x;
+                            var bottomLeftY = bottomLeft.y;
+                            var bottomRightX = Sensor.ColorFrameWidth - bottomRight.x;
+                            var bottomRightY = bottomRight.y;
 
                             kinect.GetDepthSpacePoint(ref topLeftX, ref topLeftY);
                             kinect.GetDepthSpacePoint(ref topRightX, ref topRightY);
+                            kinect.GetDepthSpacePoint(ref bottomLeftX, ref bottomLeftY);
+                            kinect.GetDepthSpacePoint(ref bottomRightX, ref bottomRightY);
 
-                            var multiplier = (marker.Value.Width / marker.Value.MarkerSize);
-                            topRightX = (topLeftX + (topRightX - topLeftX) * multiplier);
+                            var markerData = marker.Value;
 
-                            _map.AddMarker(marker.Key, Sensor.DepthFrameWidth - topLeftX, topLeftY, Sensor.DepthFrameWidth - topRightX, topRightY, marker.Value.Height);
+                            var topLeftPoint = new Point(Sensor.DepthFrameWidth - topLeftX, topLeftY);
+                            var topRightPoint = new Point(Sensor.DepthFrameWidth - topRightX, topRightY);
+                            var bottomLeftPoint = new Point(Sensor.DepthFrameWidth - bottomLeftX, bottomLeftY);
+                            var bottomRightPoint = new Point(Sensor.DepthFrameWidth - bottomRightX, bottomRightY);
+                            _map.AddMarker(marker.Key, topLeftPoint, topRightPoint, bottomLeftPoint, bottomRightPoint, markerData.Width, markerData.Depth, anglePoints.y);
                         }
 
                         for (var j = 0; j < points.Length; ++j)
@@ -438,7 +452,8 @@ namespace Vision.GUI
                             Filename = Path.GetFileName(openFileDialog.FileName),
                             MarkerSize = markerProperties.MarkerSize,
                             Width = markerProperties.MarkerWidth,
-                            Height = markerProperties.MarkerHeight
+                            Height = markerProperties.MarkerHeight,
+                            Depth = markerProperties.MarkerDepth
                         });
                 }
             }

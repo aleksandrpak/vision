@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -37,7 +38,7 @@ namespace Vision.Processing
             _map = new Dictionary<DepthAngle, List<DepthData>>();
             _markers = new Dictionary<int, int[]>();
 
-            _currentAngle = 90;
+            _currentAngle = 120;
         }
 
         public ImageSource ObstaclesImage => _obstaclesBitmap;
@@ -99,39 +100,66 @@ namespace Vision.Processing
             }
         }
 
-        public void AddMarker(int id, int leftX, int leftY, int rightX, int rightY, int height)
+        public void AddMarker(int id, Point topLeft, Point topRight, Point bottomLeft, Point bottomRight, int width, int depth, double yAngle)
         {
             lock (LastDepthData)
             {
                 const double shift = Math.PI / 2.0;
-                var mapWidth = (double)MaxDepth / 10;
+                var maxDepth = MaxDepth;
+                var mapWidth = (double)maxDepth / 10;
 
-                var leftDepth = FindDepth(leftX, leftY, 5);
+                var centerDepth = FindAverageDepth(Math.Max(topLeft.X, bottomLeft.X), Math.Max(topLeft.Y, topRight.Y), Math.Min(topRight.X, bottomRight.X), Math.Min(bottomLeft.Y, bottomRight.Y));
+                if (centerDepth == 0)
+                    return;
+
+                var maxDiff = width / 2;
+
+                var leftPoint = topLeft.X > bottomLeft.X ? topLeft : bottomLeft;
+                var leftDepth = FindDepth(leftPoint.X, leftPoint.Y, 5, centerDepth - maxDiff, centerDepth + maxDiff);
                 if (leftDepth == 0)
                     return;
 
-                var rightDepth = FindDepth(rightX, rightY, 5);
+                var rightPoint = topRight.X > bottomRight.X ? topRight : bottomRight;
+                var rightDepth = FindDepth(rightPoint.X, rightPoint.Y, 5, centerDepth - maxDiff, centerDepth + maxDiff);
                 if (rightDepth == 0)
                     return;
 
+                //var multiplier = (markerData.Width / markerData.MarkerSize);
+                //topRightX = (topLeftX + (topRightX - topLeftX) * multiplier);
+
                 var currentRadians = _currentAngle * Math.PI / 180.0;
 
-                var bottomLeftAngle = ((leftX - Width / 2) / (double)Width * HorizontalAngle * Math.PI / 180.0) - currentRadians + shift;
-                var bottomLeftX = (int)(mapWidth + Math.Sin(bottomLeftAngle) * leftDepth);
-                var bottomLeftY = (int)(mapWidth - Math.Cos(bottomLeftAngle) * leftDepth);
+                var bottomLeftAngle = ((leftPoint.X - Width / 2.0) / Width * HorizontalAngle * Math.PI / 180.0) - currentRadians + shift;
+                var bottomLeftX = mapWidth + Math.Sin(bottomLeftAngle) * leftDepth;
+                var bottomLeftY = mapWidth - Math.Cos(bottomLeftAngle) * leftDepth;
 
-                var bottomRightAngle = ((rightX - Width / 2) / (double)Width * HorizontalAngle * Math.PI / 180.0) - currentRadians + shift;
-                var bottomRightX = (int)(mapWidth + Math.Sin(bottomRightAngle) * rightDepth);
-                var bottomRightY = (int)(mapWidth - Math.Cos(bottomRightAngle) * rightDepth);
+                var bottomRightAngle = ((rightPoint.X - Width / 2.0) / Width * HorizontalAngle * Math.PI / 180.0) - currentRadians + shift;
+                var bottomRightX = mapWidth + Math.Sin(bottomRightAngle) * rightDepth;
+                var bottomRightY = mapWidth - Math.Cos(bottomRightAngle) * rightDepth;
 
-                var topLeftX = bottomLeftX;
-                var topLeftY = Math.Max(0, bottomLeftY - height);
+                var bottomLeftPoint = new Point(bottomLeftX, bottomLeftY);
+                var angle = Math.Atan((bottomRightY - bottomLeftY) / (bottomRightX - bottomLeftX));
+                var bottomRightPoint = ExtendLine(bottomLeftPoint, width, angle);
+                var topLeftPoint = ExtendLine(bottomLeftPoint, depth, angle + shift);
+                var topRightPoint = ExtendLine(bottomRightPoint, depth, angle + shift);
 
-                var topRightX = bottomRightX;
-                var topRightY = Math.Max(0, bottomRightY - height);
-
-                _markers[id] = new[] { bottomLeftX, bottomLeftY, bottomRightX, bottomRightY, topRightX, topRightY, topLeftX, topLeftY, bottomLeftX, bottomLeftY };
+                _markers[id] = new[]
+                {
+                    (int)bottomLeftPoint.X, (int)bottomLeftPoint.Y,
+                    (int)bottomRightPoint.X, (int)bottomRightPoint.Y,
+                    (int)topRightPoint.X, (int)topRightPoint.Y,
+                    (int)topLeftPoint.X, (int)topLeftPoint.Y,
+                    (int)bottomLeftPoint.X, (int)bottomLeftPoint.Y
+                };
             }
+        }
+
+        private static Point ExtendLine(Point first, double width, double angle)
+        {
+            var x3 = width * Math.Cos(angle);
+            var y3 = width * Math.Sin(angle);
+
+            return new Point(first.X + x3, first.Y + y3);
         }
 
         public void RemoveMarker(int id)
@@ -140,7 +168,28 @@ namespace Vision.Processing
                 _markers.Remove(id);
         }
 
-        private ushort FindDepth(int x, int y, int steps)
+        private ushort FindAverageDepth(double x1, double y1, double x2, double y2)
+        {
+            double sum = 0;
+            double count = 0;
+
+            for (var i = y1; i <= y2; ++i)
+            {
+                for (var j = x1; j <= x2; ++j)
+                {
+                    var depth = LastDepthData[(int)i * Width + (Width - (int)j)];
+                    if (depth == 0)
+                        continue;
+
+                    sum += depth;
+                    ++count;
+                }
+            }
+
+            return (ushort)(sum / count / 10.0);
+        }
+
+        private ushort FindDepth(double x, double y, int steps, int min, int max)
         {
             for (var step = 0; step < steps; ++step)
             {
@@ -154,9 +203,14 @@ namespace Vision.Processing
                         if (newX < 0 || newX > Width || newY < 0 || newY > Height)
                             continue;
 
-                        var depth = LastDepthData[newY * Width + newX];
-                        if (depth != 0)
-                            return (ushort)(depth / 10);
+                        var depth = LastDepthData[(int)newY * Width + (Width - (int)newX)] / 10;
+                        if (depth == 0)
+                            continue;
+
+                        if (depth < min || depth > max)
+                            continue;
+
+                        return (ushort)depth;
                     }
                 }
             }
@@ -207,7 +261,7 @@ namespace Vision.Processing
                             unsafe
                             {
                                 if (depthItem.IsObstacle)
-                                    obstaclesContext.Pixels[(int) y*pixelWidth + (int) x] = -16777216 | 255 << 16;
+                                    obstaclesContext.Pixels[(int)y * pixelWidth + (int)x] = -16777216 | 255 << 16;
                                 else
                                     otherContext.Pixels[(int)y * pixelWidth + (int)x] = -16777216 | 255 << 8;
                             }

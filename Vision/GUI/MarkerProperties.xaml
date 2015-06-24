@@ -5,10 +5,11 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Vision.GUI"
         mc:Ignorable="d"
-        Title="Свойства метки" Height="140" Width="300"
+        Title="Свойства метки" Height="175" Width="300"
         ResizeMode="NoResize">
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition></RowDefinition>
             <RowDefinition></RowDefinition>
             <RowDefinition></RowDefinition>
             <RowDefinition></RowDefinition>
@@ -25,11 +26,14 @@
         
         <Label Grid.Row="1" Grid.Column="0">Ширина объекта (см):</Label>
         <TextBox Name="WidthTextBox" Grid.Row="1" Grid.Column="1"></TextBox>
-        
-        <Label Grid.Row="2" Grid.Column="0">Глубина объекта (см):</Label>
-        <TextBox Name="HeightTextBox" Grid.Row="2" Grid.Column="1"></TextBox>
 
-        <Button Grid.Row="3" Grid.Column="0" Click="OkButtonClickEventHandler">Добавить</Button>
-        <Button Grid.Row="3" Grid.Column="1" Click="CancelButtonClickEventHandler">Отмена</Button>
+        <Label Grid.Row="2" Grid.Column="0">Высота объекта (см):</Label>
+        <TextBox Name="HeightTextBox" Grid.Row="2" Grid.Column="1"></TextBox>
+        
+        <Label Grid.Row="3" Grid.Column="0">Глубина объекта (см):</Label>
+        <TextBox Name="DepthTextBox" Grid.Row="3" Grid.Column="1"></TextBox>
+
+        <Button Grid.Row="4" Grid.Column="0" Click="OkButtonClickEventHandler">Добавить</Button>
+        <Button Grid.Row="4" Grid.Column="1" Click="CancelButtonClickEventHandler">Отмена</Button>
     </Grid>
 </Window>

@@ -165,7 +165,7 @@ namespace Vision.Kinect
                 {
                     for (var j = 0; j < ColorFrameWidth; ++j)
                     {
-                        var depthPoint = _lastDepthPoints[i*ColorFrameWidth + j];
+                        var depthPoint = _lastDepthPoints[i * ColorFrameWidth + j];
                         if (float.IsNegativeInfinity(depthPoint.X) || float.IsNegativeInfinity(depthPoint.Y))
                             continue;
 
