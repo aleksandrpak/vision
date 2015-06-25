@@ -36,8 +36,6 @@ namespace Vision.GUI
 
         private readonly Controller _servo;
 
-        private readonly ManualResetEventSlim _mapWait;
-
         private int _shift;
 
         private bool _isRotating;
@@ -50,7 +48,6 @@ namespace Vision.GUI
             _markers = new Dictionary<int, MarkerData>();
 
             _servo = new Controller();
-            _mapWait = new ManualResetEventSlim(true);
             _shift = 5;
 
             InitializeComponent();
@@ -493,23 +490,17 @@ namespace Vision.GUI
 
         private bool RotateServo(byte angle)
         {
-            _mapWait.Set();
-
             try
             {
                 _servo.Rotate(angle);
             }
             catch
             {
-                _map.DisconnectServo();
                 _isRotating = false;
                 return false;
             }
 
             _map.SetAngle(angle);
-
-            _mapWait.Reset();
-            _mapWait.Wait();
             return true;
         }
 
@@ -520,7 +511,6 @@ namespace Vision.GUI
                 await Task.Run(() =>
                 {
                     _servo.Connect(port);
-                    _map.ConnectServo(_mapWait);
                 });
             }
             catch (Exception exception)

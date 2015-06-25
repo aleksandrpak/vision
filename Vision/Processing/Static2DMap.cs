@@ -17,8 +17,6 @@ namespace Vision.Processing
 
         private double _currentAngle;
 
-        private ManualResetEventSlim _servoEvent;
-
         private readonly Dictionary<int, int[]> _markers;
         private ushort _maxDepth;
 
@@ -79,16 +77,6 @@ namespace Vision.Processing
         public void SetAngle(double angle)
         {
             _currentAngle = angle;
-        }
-
-        public void ConnectServo(ManualResetEventSlim servoEvent)
-        {
-            _servoEvent = servoEvent;
-        }
-
-        public void DisconnectServo()
-        {
-            _servoEvent = null;
         }
 
         public void Clear()
@@ -220,9 +208,6 @@ namespace Vision.Processing
 
         public async Task Update(ushort[] data)
         {
-            if (_servoEvent != null && _servoEvent.IsSet)
-                return;
-
             await Task.Run(() => BuildMap(data));
 
             var width = (double)MaxDepth / 10;
@@ -272,8 +257,6 @@ namespace Vision.Processing
                 foreach (var marker in _markers.Values)
                     _obstaclesBitmap.FillPolygon(marker, Colors.Blue);
             }
-
-            _servoEvent?.Set();
         }
 
         private void BuildMap(ushort[] data)

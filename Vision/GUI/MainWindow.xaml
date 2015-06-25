@@ -75,8 +75,8 @@
                 </Grid.ColumnDefinitions>
 
                 <Image Name="CoordinateImage" Grid.Column="0" Margin="4,0" Grid.ColumnSpan="9" Grid.Row="0"/>
-                <Image Name="ObstacleMapImage" Grid.Column="0" Grid.ColumnSpan="9" Margin="4,0" Grid.Row="0"/>
                 <Image Name="OtherMapImage" Grid.Column="0" Grid.ColumnSpan="9" Margin="4,0" Grid.Row="0"/>
+                <Image Name="ObstacleMapImage" Grid.Column="0" Grid.ColumnSpan="9" Margin="4,0" Grid.Row="0"/>
     
                 <TextBlock Grid.Row="1" Grid.Column="0" Name="Coordinate1" HorizontalAlignment="Left" Text="400см" />
                 <TextBlock Grid.Row="1" Grid.Column="1" Name="Coordinate2" HorizontalAlignment="Left" Text="320см" />
