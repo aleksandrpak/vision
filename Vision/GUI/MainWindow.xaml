@@ -17,7 +17,7 @@
                 <MenuItem Header="Сервопривод" Loaded="ServoMenuItemLoadedEventHandler" />
             </MenuItem>
             <MenuItem Header="Сервопривод">
-                <MenuItem Header="Shift">
+                <MenuItem Header="Угол поворота">
                     <MenuItem Header="1°" Click="ShiftDegreeMenuItemClickEventHandler" />
                     <MenuItem Header="5°" Click="ShiftDegreeMenuItemClickEventHandler" />
                     <MenuItem Header="10°" Click="ShiftDegreeMenuItemClickEventHandler" />

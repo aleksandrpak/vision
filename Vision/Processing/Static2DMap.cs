@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -88,7 +87,7 @@ namespace Vision.Processing
             }
         }
 
-        public void AddMarker(int id, Point topLeft, Point topRight, Point bottomLeft, Point bottomRight, int width, int depth, double yAngle)
+        public void AddMarker(int id, Point topLeft, Point topRight, Point bottomLeft, Point bottomRight, int width, int depth)
         {
             lock (LastDepthData)
             {
@@ -112,9 +111,6 @@ namespace Vision.Processing
                 if (rightDepth == 0)
                     return;
 
-                //var multiplier = (markerData.Width / markerData.MarkerSize);
-                //topRightX = (topLeftX + (topRightX - topLeftX) * multiplier);
-
                 var currentRadians = _currentAngle * Math.PI / 180.0;
 
                 var bottomLeftAngle = ((leftPoint.X - Width / 2.0) / Width * HorizontalAngle * Math.PI / 180.0) - currentRadians + shift;
@@ -128,8 +124,8 @@ namespace Vision.Processing
                 var bottomLeftPoint = new Point(bottomLeftX, bottomLeftY);
                 var angle = Math.Atan((bottomRightY - bottomLeftY) / (bottomRightX - bottomLeftX));
                 var bottomRightPoint = ExtendLine(bottomLeftPoint, width, angle);
-                var topLeftPoint = ExtendLine(bottomLeftPoint, depth, angle + shift);
-                var topRightPoint = ExtendLine(bottomRightPoint, depth, angle + shift);
+                var topLeftPoint = ExtendLine(bottomLeftPoint, -depth, angle + shift);
+                var topRightPoint = ExtendLine(bottomRightPoint, -depth, angle + shift);
 
                 _markers[id] = new[]
                 {
@@ -161,9 +157,9 @@ namespace Vision.Processing
             double sum = 0;
             double count = 0;
 
-            for (var i = y1; i <= y2; ++i)
+            for (var i = Math.Min(y1, y2); i <= Math.Max(y1, y2); ++i)
             {
-                for (var j = x1; j <= x2; ++j)
+                for (var j = Math.Min(x1, x2); j <= Math.Max(x1, x2); ++j)
                 {
                     var depth = LastDepthData[(int)i * Width + (Width - (int)j)];
                     if (depth == 0)

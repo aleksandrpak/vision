@@ -39,6 +39,7 @@ namespace Vision.GUI
         private int _shift;
 
         private bool _isRotating;
+
         private Static2DMap _map;
 
         public MainWindow()
@@ -167,7 +168,11 @@ namespace Vision.GUI
         private async void InitializeSensor()
         {
             _markerSystem = new NyARMarkerSystem(new NyARMarkerSystemConfig(Sensor.ColorFrameWidth, Sensor.ColorFrameHeight));
-            //_markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80), new MarkerData { Filename = "patt.hiro", MarkerSize = 8, Width = 48, Depth = 40 });
+            _markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.hiro"), 16, 25, 80), new MarkerData { Filename = "patt.hiro", MarkerSize = 8, Width = 25, Height = 25, Depth = 25 });
+            _markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.ball"), 16, 25, 140), new MarkerData { Filename = "patt.ball", MarkerSize = 14, Width = 50, Height = 50, Depth = 50 });
+            _markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.boat"), 16, 25, 140), new MarkerData { Filename = "patt.boat", MarkerSize = 14, Width = 150, Height = 150, Depth = 150 });
+            _markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.cup"), 16, 25, 140), new MarkerData { Filename = "patt.cup", MarkerSize = 14, Width = 125, Height = 125, Depth = 125 });
+            _markers.Add(_markerSystem.addARMarker(Path.GetFullPath("Data/patt.screw"), 16, 25, 140), new MarkerData { Filename = "patt.screw", MarkerSize = 14, Width = 75, Height = 75, Depth = 75 });
 
             try
             {
@@ -400,7 +405,8 @@ namespace Vision.GUI
                             var topRightPoint = new Point(Sensor.DepthFrameWidth - topRightX, topRightY);
                             var bottomLeftPoint = new Point(Sensor.DepthFrameWidth - bottomLeftX, bottomLeftY);
                             var bottomRightPoint = new Point(Sensor.DepthFrameWidth - bottomRightX, bottomRightY);
-                            _map.AddMarker(marker.Key, topLeftPoint, topRightPoint, bottomLeftPoint, bottomRightPoint, markerData.Width, markerData.Depth, anglePoints.y);
+
+                            _map.AddMarker(marker.Key, topLeftPoint, topRightPoint, bottomLeftPoint, bottomRightPoint, markerData.Width, markerData.Depth);
                         }
 
                         for (var j = 0; j < points.Length; ++j)
@@ -443,7 +449,7 @@ namespace Vision.GUI
                 if (propertieResult != null && propertieResult.Value)
                 {
                     _markers.Add(
-                        _markerSystem.addARMarker(openFileDialog.FileName, 16, 25, markerProperties.MarkerSize),
+                        _markerSystem.addARMarker(openFileDialog.FileName, 16, 25, markerProperties.MarkerSize * 10),
                         new MarkerData
                         {
                             Filename = Path.GetFileName(openFileDialog.FileName),
