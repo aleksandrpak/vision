@@ -218,6 +218,7 @@ namespace Vision.Processing
                     otherContext.Clear();
 
                     var pixelWidth = obstaclesContext.Width;
+                    var pixelHeight = obstaclesContext.Height;
 
                     foreach (var depthPair in _map)
                     {
@@ -236,7 +237,7 @@ namespace Vision.Processing
                             var x = width + Math.Sin(angle) * depth;
                             var y = width - Math.Cos(angle) * depth;
 
-                            if (x < 0 || x > pixelWidth || y < 0 || y > pixelWidth)
+                            if (x < 0 || x > pixelWidth || y < 0 || y > pixelHeight)
                                 continue;
 
                             unsafe
